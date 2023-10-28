@@ -8,18 +8,16 @@ public class GameController : MonoBehaviour
 {
 
   public static GameController s_Singleton;
-  NetworkManager _networkManager;
 
   // Start is called before the first frame update
   void Start()
   {
     s_Singleton = this;
 
-    _networkManager = GameObject.Find("Mirror").GetComponent<NetworkManager>();
 #if UNITY_EDITOR
-    _networkManager.StartHost();
+    NetworkManager.singleton.StartHost();
 #else
-    _networkManager.StartClient();
+    NetworkManager.singleton.StartClient();
 #endif
   }
 

@@ -5,9 +5,8 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 using Mirror;
-using Unity.VisualScripting;
 
-public class PlayerController : CustomNetworkObject, IHoldable
+public class PlayerController : CustomNetworkObject, ICanHold
 {
 
   Vector2 _inputMovement, _inputMovementLast;
@@ -21,11 +20,30 @@ public class PlayerController : CustomNetworkObject, IHoldable
     //
     _playerModel = transform.GetChild(1).GetComponent<Animator>();
     _playerModel.transform.parent = transform.parent;
+
+    //
+    if (isServer)
+    {
+
+      //
+      _OnNetworkCollision += (CustomNetworkObject networkObject) =>
+      {
+        Debug.Log($"Collided with network object: {networkObject.gameObject.name}");
+
+        if (networkObject is IPickupable && networkObject.GetComponent<ThrownPickupable>() != null)
+          ContextualInteract(networkObject, false);
+      };
+    }
   }
 
   // Clean up
+  [Client]
   void OnDestroy()
   {
+
+    //
+    if (_holdData._IsHolding)
+      ContextualInteract(null);
 
     // Destroy model
     GameObject.Destroy(_playerModel.gameObject);
@@ -86,7 +104,10 @@ public class PlayerController : CustomNetworkObject, IHoldable
       // Handle input
       if (_inputMovement != inputMovement)
       {
+        if (inputMovement != Vector2.zero)
+          _inputMovementLast = inputMovement;
         _inputMovement = inputMovement;
+
         CmdSetInput(_inputMovement);
       }
 
@@ -96,17 +117,16 @@ public class PlayerController : CustomNetworkObject, IHoldable
     }
 
     // Handle model
-    var modelDistance = (transform.position - _playerModel.transform.position) * Time.deltaTime * 11f;
-    var d = modelDistance.magnitude;
-    if (d < 0.02f)
-      d = 0f;
-    d *= 15f;
-    _anim = Mathf.Clamp(_anim + (d - _anim) * Time.deltaTime * 5f, 0f, 1f);
-    _playerModel.SetFloat("MovementSpeed", _anim);
+    var modelDistance = (new Vector3(transform.position.x, 0f, transform.position.z) - new Vector3(_playerModel.transform.position.x, 0f, _playerModel.transform.position.z)) * Time.deltaTime * 11f;
+    _animDistance = Mathf.Clamp(_animDistance + modelDistance.magnitude * 1.3f - Time.deltaTime * 2f, 0f, 1f);
+    _playerModel.SetFloat("MovementSpeed", _animDistance);
     _playerModel.transform.position += modelDistance;
-    _playerModel.transform.rotation = Quaternion.Lerp(_playerModel.transform.rotation, _Rb.rotation, Time.deltaTime * 3f);
+    if (isLocalPlayer)
+      _playerModel.transform.rotation = Quaternion.Lerp(_playerModel.transform.rotation, Quaternion.LookRotation(new Vector3(_inputMovementLast.x, 0f, _inputMovementLast.y)), Time.deltaTime * 3f);
+    else
+      _playerModel.transform.rotation = Quaternion.Lerp(_playerModel.transform.rotation, _Rb.rotation, Time.deltaTime * 3f);
   }
-  float _anim;
+  float _animDistance;
 
   void FixedUpdate()
   {
@@ -131,10 +151,11 @@ public class PlayerController : CustomNetworkObject, IHoldable
   void CmdSetInput(Vector2 input)
   {
     if (input != Vector2.zero)
-      _inputMovementLast = _inputMovement;
+      _inputMovementLast = input;
     _inputMovement = input;
   }
 
+  //
   [Command]
   void CmdInteract()
   {
@@ -145,11 +166,12 @@ public class PlayerController : CustomNetworkObject, IHoldable
     gameObject.layer = 2;
 
     var raycastInfo = new RaycastHit();
-    if (Physics.SphereCast(new Ray(_Rb.position, transform.forward * 5f), 0.2f, out raycastInfo, 1f))
+    if (!Physics.SphereCast(new Ray(_Rb.position, transform.forward * 5f), 0.2f, out raycastInfo, 1f))
+      Physics.SphereCast(new Ray(_Rb.position, transform.forward * 5f), 0.35f, out raycastInfo, 1f);
+    if (raycastInfo.collider != null)
     {
 
-      var other = raycastInfo.collider.gameObject;
-      var networkObject = other.transform.parent.GetComponent<CustomNetworkObject>();
+      var networkObject = GetNetworkObjectFrom(raycastInfo.collider);
       if (networkObject != null && networkObject is IPickupable)
       {
         interactOther = networkObject;
@@ -164,33 +186,41 @@ public class PlayerController : CustomNetworkObject, IHoldable
   }
 
   // Hold info
-  IHoldable _holdData { get { return this; } }
-  CustomNetworkObject IHoldable._Holdee { get; set; }
-  bool IHoldable._IsHolding { get { return _holdData._Holdee != null; } }
-  void IHoldable.Hold(CustomNetworkObject other)
+  ICanHold _holdData { get { return this; } }
+  CustomNetworkObject ICanHold._Holdee { get; set; }
+  bool ICanHold._IsHolding { get { return _holdData._Holdee != null; } }
+  void ICanHold.Hold(CustomNetworkObject other)
   {
     _holdData._Holdee = other;
 
     other._Rb.isKinematic = true;
     other.ToggleCollider(false);
+
+    IgnoreCollisionsWith(other);
   }
 
-  void IHoldable.Throw()
+  void ICanHold.Throw()
   {
     _holdData._Holdee._Rb.isKinematic = false;
     _holdData._Holdee.ToggleCollider(true);
     _holdData._Holdee._Rb.AddForce(transform.forward * 250f);
 
+    var thrownComponent = _holdData._Holdee.gameObject.AddComponent<ThrownPickupable>();
+    thrownComponent._Self = _holdData._Holdee;
+    thrownComponent._Thrower = this;
+
     _holdData._Holdee = null;
   }
 
-  void ContextualInteract(CustomNetworkObject other)
+  // Do something depending on what is in front of player
+  void ContextualInteract(CustomNetworkObject other, bool tryThrow = true)
   {
 
     // Throw
     if (_holdData._IsHolding)
     {
-      _holdData.Throw();
+      if (tryThrow)
+        _holdData.Throw();
       return;
     }
 

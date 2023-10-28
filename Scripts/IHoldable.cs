@@ -2,7 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public interface IHoldable
+public interface ICanHold
 {
 
   public CustomNetworkObject _Holdee { get; set; }
