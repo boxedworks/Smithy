@@ -13,8 +13,6 @@ public class ThrownPickupable : MonoBehaviour
 
     if (!this.enabled) return;
 
-    Debug.Log(c.gameObject.name);
-
     // Reset collisions
     _Self.IgnoreCollisionsWith(_Thrower, false);
 

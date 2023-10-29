@@ -13,13 +13,16 @@ public class PlayerController : CustomNetworkObject, ICanHold
 
   Animator _playerModel;
 
-  new void Start()
+  void Start()
   {
-    base.Start();
+    Init(ObjectType.ENTITY_PLAYER);
 
     //
     _playerModel = transform.GetChild(1).GetComponent<Animator>();
     _playerModel.transform.parent = transform.parent;
+
+    //
+    _inputMovementLast = new Vector2(0f, 1f);
 
     //
     if (isServer)
@@ -68,6 +71,8 @@ public class PlayerController : CustomNetworkObject, ICanHold
 
         // Movement
         inputMovement = gamepad.leftStick.ReadValue();
+        if (inputMovement.magnitude < 0.4f)
+          inputMovement = Vector2.zero;
 
         // Direction
         //var input2 = gamepad.rightStick.ReadValue();
@@ -125,25 +130,39 @@ public class PlayerController : CustomNetworkObject, ICanHold
       _playerModel.transform.rotation = Quaternion.Lerp(_playerModel.transform.rotation, Quaternion.LookRotation(new Vector3(_inputMovementLast.x, 0f, _inputMovementLast.y)), Time.deltaTime * 3f);
     else
       _playerModel.transform.rotation = Quaternion.Lerp(_playerModel.transform.rotation, _Rb.rotation, Time.deltaTime * 3f);
-  }
-  float _animDistance;
 
+    // Sfx
+    _footstepDistance += _animDistance * 0.04f;
+    if (_footstepDistance > 1f)
+    {
+      _footstepDistance -= 1f;
+
+      SfxManager.PlayAudioSourceSimple(
+        transform.position,
+        GameObject.Find("footstep").GetComponent<AudioSource>().clip,
+        0.6f,
+        0.87f, 1.13f,
+        SfxManager.AudioPriority.NORMAL
+      );
+    }
+  }
+  float _animDistance, _footstepDistance;
+
+  [Server]
   void FixedUpdate()
   {
 
-    if (isServer)
-    {
-      // Add force to player
-      _Rb.AddForce(new Vector3(1f * _inputMovement.x, 0f, 1f * _inputMovement.y) * 17f);
+    // Add force to player
+    _Rb.AddForce(new Vector3(1f * _inputMovement.x, 0f, 1f * _inputMovement.y) * 17f);
 
-      // Rotate
-      if (_inputMovementLast != Vector2.zero)
-        _Rb.MoveRotation(Quaternion.LookRotation(new Vector3(_inputMovementLast.x, 0f, _inputMovementLast.y)));
+    // Rotate
+    if (_inputMovementLast != Vector2.zero)
+      _Rb.MoveRotation(Quaternion.LookRotation(new Vector3(_inputMovementLast.x, 0f, _inputMovementLast.y)));
 
-      // Check hold
-      if (_holdData._IsHolding)
-        _holdData._Holdee._Rb.MovePosition(_Rb.position + new Vector3(0f, 2.5f, 0f));
-    }
+    // Check hold
+    if (_holdData._IsHolding)
+      _holdData._Holdee._Rb.MovePosition(_Rb.position + new Vector3(0f, 2.5f, 0f));
+
   }
 
   // Set player input on server
@@ -166,10 +185,24 @@ public class PlayerController : CustomNetworkObject, ICanHold
     gameObject.layer = 2;
 
     var raycastInfo = new RaycastHit();
-    if (!Physics.SphereCast(new Ray(_Rb.position, transform.forward * 5f), 0.2f, out raycastInfo, 1f))
-      Physics.SphereCast(new Ray(_Rb.position, transform.forward * 5f), 0.35f, out raycastInfo, 1f);
+    if (Physics.SphereCast(new Ray(_Rb.position + new Vector3(0f, 1.5f, 0f) + transform.forward * 0.1f, transform.forward * 5f), 0.2f, out raycastInfo, 2f))
+      if (GetNetworkObjectFrom(raycastInfo.collider) == null)
+        raycastInfo = new();
+    //Debug.DrawRay(_Rb.position + new Vector3(0f, 1.5f, 0f) + transform.forward * 0.1f, transform.forward * 5f, Color.red, 3f);
+
+    // Recast if no found
+    if (raycastInfo.collider == null)
+    {
+      Physics.SphereCast(new Ray(_Rb.position + new Vector3(0f, 0.6f, 0f) + transform.forward * 0.1f, transform.forward * 5f), 0.2f, out raycastInfo, 2f);
+      //Debug.DrawRay(_Rb.position + new Vector3(0f, 0.6f, 0f) + transform.forward * 0.1f, transform.forward * 5f, Color.blue, 3f);
+    }
+
+    // Handle
     if (raycastInfo.collider != null)
     {
+
+      //Debug.Log($"{raycastInfo.collider.name} {raycastInfo.distance}");
+      //Debug.DrawLine(_Rb.position, raycastInfo.collider.transform.position, Color.magenta, 3f);
 
       var networkObject = GetNetworkObjectFrom(raycastInfo.collider);
       if (networkObject != null && networkObject is IPickupable)
