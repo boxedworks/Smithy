@@ -10,5 +10,6 @@ public interface ICanHold
 
   public void Hold(CustomNetworkObject other);
   public void Throw();
+  public void Drop();
 
 }

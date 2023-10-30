@@ -25,7 +25,7 @@ public class BasicMaterial : CustomNetworkObject, IPickupable
     _spawned = true;
 
     // Load mesh and init physics
-    var newMesh = GameObject.Instantiate(Resources.Load<GameObject>($@"NetworkObjects/{_ObjectType}"), transform);
+    var newMesh = SpawnNetworkObjectModel(_ObjectType, transform);
     newMesh.transform.localPosition = Vector3.zero;
 
     //

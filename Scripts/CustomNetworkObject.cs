@@ -10,7 +10,18 @@ public class CustomNetworkObject : NetworkBehaviour
 
   [System.NonSerialized]
   public Rigidbody _Rb;
-  protected Collider _collider;
+  [System.NonSerialized]
+  public Collider _Collider;
+
+  //
+  public bool _IsJustThrown
+  {
+    get
+    {
+      var thrownComponent = GetComponent<ThrownPickupable>();
+      return thrownComponent?.enabled ?? false;
+    }
+  }
 
   //
   public enum ObjectType
@@ -32,12 +43,17 @@ public class CustomNetworkObject : NetworkBehaviour
   public ObjectType _ObjectType;
 
   //
+  public System.Action _OnInit;
   protected void Init(ObjectType objectType)
   {
     _Rb = GetComponent<Rigidbody>();
-    _collider = transform.GetChild(0).GetComponent<Collider>();
+    _Collider = transform.GetChild(0).GetComponent<Collider>();
 
     _ObjectType = objectType;
+
+    //
+    _OnInit?.Invoke();
+    _OnInit = null;
   }
 
   //
@@ -53,10 +69,7 @@ public class CustomNetworkObject : NetworkBehaviour
 
     Spawn();
   }
-  protected virtual void Spawn()
-  {
-
-  }
+  protected virtual void Spawn() { }
 
   // Update is called once per frame
   void Update()
@@ -67,7 +80,7 @@ public class CustomNetworkObject : NetworkBehaviour
   //
   protected System.Action<CustomNetworkObject> _OnNetworkCollision;
   [Server]
-  void OnCollisionEnter(Collision c)
+  public void OnCollisionEnter(Collision c)
   {
 
     // Do not check if no collision function
@@ -75,9 +88,17 @@ public class CustomNetworkObject : NetworkBehaviour
 
     // Gather network object and invoke function
     var networkObject = GetNetworkObjectFrom(c.collider);
-    if (networkObject == null) return;
+    OnCollisionEnter(networkObject);
+  }
+  public void OnCollisionEnter(CustomNetworkObject other)
+  {
+    // Do not check if no collision function
+    if (_OnNetworkCollision == null) return;
 
-    _OnNetworkCollision?.Invoke(networkObject);
+    //
+    if (other == null) return;
+
+    _OnNetworkCollision?.Invoke(other);
   }
 
   //
@@ -92,17 +113,17 @@ public class CustomNetworkObject : NetworkBehaviour
   //
   public void ToggleCollider(bool toggle)
   {
-    _collider.enabled = toggle;
+    _Collider.enabled = toggle;
   }
 
   //
   public void IgnoreCollisionsWith(CustomNetworkObject other, bool ignore = true)
   {
-    Physics.IgnoreCollision(_collider, other._collider, ignore);
+    Physics.IgnoreCollision(_Collider, other._Collider, ignore);
   }
 
   //
-  protected static CustomNetworkObject GetNetworkObjectFrom(Collider c)
+  public static CustomNetworkObject GetNetworkObjectFrom(Collider c)
   {
     return c.transform.parent.GetComponent<CustomNetworkObject>();
   }
@@ -112,8 +133,14 @@ public class CustomNetworkObject : NetworkBehaviour
   }
 
   //
+  public static Transform SpawnNetworkObjectModel(ObjectType objectType, Transform parent)
+  {
+    return GameObject.Instantiate(Resources.Load<GameObject>($@"NetworkObjects/{objectType}"), parent).transform;
+  }
+
+  //
   [Server]
-  public static GameObject SpawnNetworkObject(ObjectType objectType, Vector3 posAt)
+  public static CustomNetworkObject SpawnNetworkObject(ObjectType objectType, Vector3 posAt)
   {
     // Spawn new network object
     var mat = NetworkManager.singleton.spawnPrefabs[0];
@@ -123,10 +150,11 @@ public class CustomNetworkObject : NetworkBehaviour
     newMat.name = $"{objectType}";
 
     // Network spawn
-    GetNetworkObjectFrom(newMat)._ObjectType = objectType;
+    var networkObject = GetNetworkObjectFrom(newMat);
+    networkObject._ObjectType = objectType;
     NetworkServer.Spawn(newMat);
 
     //
-    return newMat;
+    return networkObject;
   }
 }

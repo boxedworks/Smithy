@@ -8,6 +8,7 @@ public class GameController : MonoBehaviour
 {
 
   public static GameController s_Singleton;
+  public SfxProfile[] _SfxProfiles;
 
   // Start is called before the first frame update
   void Start()
@@ -35,6 +36,31 @@ public class GameController : MonoBehaviour
   {
 
     SfxManager.Update();
+
+  }
+
+  //
+  public static class ParticleManager
+  {
+
+
+    //
+    public enum ParticleType
+    {
+      NONE,
+
+      CLOUD_SIMPLE,
+    }
+
+    //
+    public static void PlayParticlesAt(Vector3 posAt, ParticleType particleType)
+    {
+
+      var particles = GameObject.Find("Particles").transform.GetChild(((int)particleType) - 1).GetComponent<ParticleSystem>();
+      particles.transform.position = posAt;
+      particles.Play();
+
+    }
 
   }
 
@@ -69,6 +95,7 @@ public class GameController : MonoBehaviour
       _og.Toggle(false);
 
       //
+      //s_sliders = new();
     }
 
     //
@@ -81,7 +108,15 @@ public class GameController : MonoBehaviour
       newSlider.Slider.transform.parent = _og.Slider.transform.parent;
       newSlider.Slider.gameObject.SetActive(true);
 
+      //s_sliders.Add(newSlider);
+
       return newSlider.Slider;
+    }
+
+    //
+    public static void RemoveSlider(UnityEngine.UI.Slider slider)
+    {
+      GameObject.Destroy(slider.gameObject);
     }
 
   }

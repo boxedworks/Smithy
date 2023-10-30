@@ -13,6 +13,10 @@ public class ThrownPickupable : MonoBehaviour
 
     if (!this.enabled) return;
 
+    // Register network collision
+    var networkObject = CustomNetworkObject.GetNetworkObjectFrom(c.collider);
+    networkObject?.OnCollisionEnter(_Self);
+
     // Reset collisions
     _Self.IgnoreCollisionsWith(_Thrower, false);
 
