@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 using Mirror;
+using System.Runtime.InteropServices;
 
 public class GameController : MonoBehaviour
 {
@@ -18,6 +19,7 @@ public class GameController : MonoBehaviour
     // Init
     SfxManager.Init();
     SliderManager.Init();
+    OrderManager.Init();
 
     // Network
 #if UNITY_EDITOR
@@ -36,7 +38,7 @@ public class GameController : MonoBehaviour
   {
 
     SfxManager.Update();
-
+    OrderManager.Update();
   }
 
   //
@@ -65,8 +67,11 @@ public class GameController : MonoBehaviour
   }
 
   //
-  public static class SliderManager
+  public class SliderManager
   {
+
+    //
+    static SliderManager s_singleton;
 
     // Hold all slider data
     struct SliderData
@@ -82,12 +87,22 @@ public class GameController : MonoBehaviour
       }
 
     }
-    static SliderData _og;
-    static List<SliderData> s_sliders;
+    SliderData _og;
+    List<SliderData> _sliders;
 
     //
     public static void Init()
     {
+      new SliderManager();
+    }
+
+    public SliderManager()
+    {
+
+      //
+      s_singleton = this;
+
+      //
       _og = new SliderData()
       {
         Slider = GameObject.Find("SliderOG").GetComponent<UnityEngine.UI.Slider>()
@@ -103,9 +118,9 @@ public class GameController : MonoBehaviour
     {
       var newSlider = new SliderData()
       {
-        Slider = GameObject.Instantiate(_og.Slider.gameObject).GetComponent<UnityEngine.UI.Slider>()
+        Slider = GameObject.Instantiate(s_singleton._og.Slider.gameObject).GetComponent<UnityEngine.UI.Slider>()
       };
-      newSlider.Slider.transform.parent = _og.Slider.transform.parent;
+      newSlider.Slider.transform.parent = s_singleton._og.Slider.transform.parent;
       newSlider.Slider.gameObject.SetActive(true);
 
       //s_sliders.Add(newSlider);
@@ -117,6 +132,90 @@ public class GameController : MonoBehaviour
     public static void RemoveSlider(UnityEngine.UI.Slider slider)
     {
       GameObject.Destroy(slider.gameObject);
+    }
+
+  }
+
+  // Order management
+  public class OrderManager
+  {
+
+    // Static members
+    static OrderManager s_singleton;
+    static int s_orderId;
+
+    // Order data
+    List<Order> _orders;
+    struct Order
+    {
+      public int ID;
+
+      public float TimeCreated, TimeExpired;
+      public CustomNetworkObject.ObjectType DesiredResult;
+
+      // UI
+      public UnityEngine.UI.Slider UiSlider;
+    }
+
+    // Ui
+    GameObject _orderBase;
+
+    // Initialize
+    public static void Init()
+    {
+      new OrderManager();
+    }
+    public void Reset()
+    {
+      s_singleton = this;
+
+      _orders = new();
+      _orderBase = GameObject.Find("OrderQueue").transform.GetChild(0).GetChild(0).gameObject;
+    }
+    public OrderManager()
+    {
+      Reset();
+    }
+
+    //
+    public static void RegisterOrder(CustomNetworkObject.ObjectType result, float duration)
+    {
+
+      // Rpc order to clients
+      NetworkEventManager.s_Singleton.RpcRegisterOrder(result, duration);
+    }
+    public static void HandleRpcOrder(CustomNetworkObject.ObjectType result, float duration)
+    {
+
+      // Create a new order
+      s_singleton._orders.Add(
+        new Order()
+        {
+          ID = s_orderId++,
+
+          TimeCreated = (float)NetworkTime.time,
+          TimeExpired = (float)NetworkTime.time + duration,
+
+          DesiredResult = result,
+
+          UiSlider = GameObject.Instantiate(s_singleton._orderBase, s_singleton._orderBase.transform.parent).transform.GetChild(1).GetComponent<UnityEngine.UI.Slider>()
+        });
+        s_singleton._orders[^1].UiSlider.transform.parent.gameObject.SetActive(true);
+    }
+
+
+    // Update orders
+    public static void Update()
+    {
+
+      foreach (var orderData in s_singleton._orders)
+      {
+
+        var duration = orderData.TimeExpired - orderData.TimeCreated;
+        orderData.UiSlider.value = (float)(1f - (orderData.TimeExpired - NetworkTime.time) / duration);
+
+      }
+
     }
 
   }

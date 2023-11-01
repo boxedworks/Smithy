@@ -26,7 +26,7 @@ public class PlayerController : CustomNetworkObject, ICanHold
   {
 
     //
-    Init(ObjectType.ENTITY_PLAYER);
+    Init(ObjectType.ENTITY_PLAYER, 0);
 
     //
     _playerModel = transform.GetChild(1).GetComponent<Animator>();
@@ -60,7 +60,6 @@ public class PlayerController : CustomNetworkObject, ICanHold
   }
 
   // Clean up
-  bool _destroyed;
   void OnDestroy()
   {
 
@@ -71,7 +70,8 @@ public class PlayerController : CustomNetworkObject, ICanHold
     }
 
     // Destroy model
-    GameObject.Destroy(_playerModel?.gameObject);
+    if (_playerModel != null)
+      GameObject.Destroy(_playerModel.gameObject);
   }
 
   // Gather / Handle input
@@ -159,13 +159,14 @@ public class PlayerController : CustomNetworkObject, ICanHold
     {
       _footstepDistance -= 1f;
 
-      SfxManager.PlayAudioSourceSimple(
-        transform.position,
-        GameController.s_Singleton._SfxProfiles[0]._audioClips[0],
-        0.6f,
-        0.87f, 1.13f,
-        SfxManager.AudioPriority.NORMAL
-      );
+      PlayAudioSourceAt(
+        SfxType.FOOTSTEPS,
+        new SfxPlayData(transform.position)
+        {
+          Volume = 0.6f,
+          PitchLower = 0.87f,
+          PitchHigher = 1.13f
+        });
     }
   }
   float _animDistance, _footstepDistance;
@@ -245,6 +246,59 @@ public class PlayerController : CustomNetworkObject, ICanHold
     ContextualInteract(interactOther);
   }
 
+  //
+  enum NetworkEvent
+  {
+    NONE,
+
+    OBJECT_PICKUP,
+    OBJECT_THROW
+  }
+  [ClientRpc]
+  void RpcHandleNetworkEvent(NetworkEvent networkFlag)
+  {
+
+    switch (networkFlag)
+    {
+
+      case NetworkEvent.OBJECT_PICKUP:
+
+        PlayAudioSourceAt(
+          SfxType.OBJECT_PICKUP,
+          new SfxPlayData(transform.position)
+          {
+            Volume = 0.7f,
+          });
+
+        break;
+
+      case NetworkEvent.OBJECT_THROW:
+
+        PlayAudioSourceAt(
+          SfxType.OBJECT_THROW,
+          new SfxPlayData(transform.position)
+          {
+            Volume = 1f,
+          });
+
+        break;
+
+    }
+
+  }
+
+  // Sfx wrapper
+  enum SfxType
+  {
+    FOOTSTEPS,
+    OBJECT_PICKUP,
+    OBJECT_THROW,
+  }
+  AudioSource PlayAudioSourceAt(SfxType sfxType, SfxPlayData sfxPlayData)
+  {
+    return PlayAudioSourceAt((int)sfxType, sfxPlayData);
+  }
+
   // Hold info
   ICanHold _holdData { get { return this; } }
   CustomNetworkObject ICanHold._Holdee { get; set; }
@@ -257,6 +311,9 @@ public class PlayerController : CustomNetworkObject, ICanHold
     other.ToggleCollider(false);
 
     IgnoreCollisionsWith(other);
+
+    // Fx
+    RpcHandleNetworkEvent(NetworkEvent.OBJECT_PICKUP);
   }
   public void Hold(CustomNetworkObject other)
   {
@@ -274,6 +331,9 @@ public class PlayerController : CustomNetworkObject, ICanHold
     thrownComponent._Thrower = this;
 
     _holdData._Holdee = null;
+
+    // Fx
+    RpcHandleNetworkEvent(NetworkEvent.OBJECT_THROW);
   }
 
   void ICanHold.Drop()
@@ -313,7 +373,9 @@ public class PlayerController : CustomNetworkObject, ICanHold
 
       // Hold
       if (other is IPickupable)
+      {
         Hold(other);
+      }
 
       // Forge
       else if (other is Forge)

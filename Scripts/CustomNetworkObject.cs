@@ -8,10 +8,15 @@ using System.ComponentModel.Design;
 public class CustomNetworkObject : NetworkBehaviour
 {
 
+  // Physics
   [System.NonSerialized]
   public Rigidbody _Rb;
   [System.NonSerialized]
   public Collider _Collider;
+
+  // Sfx
+  int _sfxProfileIndex;
+  SfxProfile _sfxProfile { get { return GameController.s_Singleton._SfxProfiles[_sfxProfileIndex]; } }
 
   //
   public bool _IsJustThrown
@@ -44,12 +49,18 @@ public class CustomNetworkObject : NetworkBehaviour
 
   //
   public System.Action _OnInit;
-  protected void Init(ObjectType objectType)
+  protected void Init(ObjectType objectType, int sfxProfileIndex)
   {
+
+    // Local
+    _ObjectType = objectType;
+
+    // Physics
     _Rb = GetComponent<Rigidbody>();
     _Collider = transform.GetChild(0).GetComponent<Collider>();
 
-    _ObjectType = objectType;
+    // Sfx
+    _sfxProfileIndex = sfxProfileIndex;
 
     //
     _OnInit?.Invoke();
@@ -99,6 +110,45 @@ public class CustomNetworkObject : NetworkBehaviour
     if (other == null) return;
 
     _OnNetworkCollision?.Invoke(other);
+  }
+
+  //
+  protected struct SfxPlayData
+  {
+    public Vector3 PosAt;
+    public float Volume, PitchLower, PitchHigher;
+    public bool Loop;
+
+    public SfxPlayData(Vector3 posAt)
+    {
+      PosAt = posAt;
+
+      Volume = 1f;
+      PitchLower = 0.9f;
+      PitchHigher = 1.1f;
+
+      Loop = false;
+    }
+  }
+  protected AudioSource PlayAudioSourceAt(int sfxProfileIndex, SfxPlayData sfxPlayData)
+  {
+    var newAudioSource = SfxManager.PlayAudioSourceSimple(
+      sfxPlayData.PosAt,
+
+      _sfxProfile._audioClips[sfxProfileIndex],
+      sfxPlayData.Volume,
+      sfxPlayData.PitchLower, sfxPlayData.PitchHigher,
+
+      SfxManager.AudioPriority.NORMAL
+    );
+    newAudioSource.loop = sfxPlayData.Loop;
+
+    return newAudioSource;
+  }
+
+  protected void StopAudioSource(AudioSource source)
+  {
+    SfxManager.StopAudioSource(source);
   }
 
   //

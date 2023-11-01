@@ -29,6 +29,6 @@ public class BasicMaterial : CustomNetworkObject, IPickupable
     newMesh.transform.localPosition = Vector3.zero;
 
     //
-    Init(_ObjectType);
+    Init(_ObjectType, -1);
   }
 }

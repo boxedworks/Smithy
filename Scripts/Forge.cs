@@ -39,7 +39,7 @@ public class Forge : CustomNetworkObject
   // Start is called before the first frame update
   void Start()
   {
-    Init(ObjectType.BLOCK_FORGE);
+    Init(ObjectType.BLOCK_FORGE, 1);
 
     _slider = GameController.SliderManager.GetSlider();
     SetSliderPos();
@@ -124,12 +124,31 @@ public class Forge : CustomNetworkObject
       var normalizedTime = 1f;
 
       // Cooking
-      var cooking = false;
       if ((float)NetworkTime.time < _forgeData.CookTimeEnd)
       {
-        cooking = true;
-
         normalizedTime = 1f + ((float)NetworkTime.time - _forgeData.CookTimeEnd) / (_forgeData.CookTimeEnd - _forgeData.CookTimeStart);
+
+        // Fx
+        if (!_particlesSmoke.isPlaying)
+        {
+          _particlesSmoke.Play();
+
+          if (_audioForge == null)
+          {
+            _audioForge = PlayAudioSourceAt(
+              0,
+              new SfxPlayData(transform.position)
+              {
+                Volume = 0.6f,
+                PitchLower = 0.95f,
+                PitchHigher = 1.05f,
+
+                Loop = true
+              });
+          }
+          else
+            _audioForge.Play();
+        }
       }
 
       // Done!
@@ -138,37 +157,18 @@ public class Forge : CustomNetworkObject
         OnCooked();
       }
 
-      // Cook fx
+      // Slider fx
       _slider.value = normalizedTime;
-      if (cooking)
-      {
-        if (!_particlesSmoke.isPlaying)
-        {
-          _particlesSmoke.Play();
+    }
 
-          if (_audioForge == null)
-          {
-            _audioForge = SfxManager.PlayAudioSourceSimple(
-              transform.position,
-              GameController.s_Singleton._SfxProfiles[1]._audioClips[0],
-              0.6f,
-              0.95f, 1.05f,
-              SfxManager.AudioPriority.NORMAL
-            );
-            _audioForge.loop = true;
-          }
-          else
-            _audioForge.Play();
-        }
-      }
-      else
+    // Stop fx
+    else
+    {
+      if (_particlesSmoke.isPlaying)
       {
-        if (_particlesSmoke.isPlaying)
-        {
-          _particlesSmoke.Stop();
-          _audioForge?.Stop();
-          _audioForge = null;
-        }
+        _particlesSmoke.Stop();
+        StopAudioSource(_audioForge);
+        _audioForge = null;
       }
     }
 
@@ -264,6 +264,12 @@ public class Forge : CustomNetworkObject
     StoreObject(objectType);
 
     // FX
+    PlayAudioSourceAt(
+      1,
+      new SfxPlayData(transform.position)
+      {
+        Volume = 0.9f,
+      });
     GameController.ParticleManager.PlayParticlesAt(fxPosition, GameController.ParticleManager.ParticleType.CLOUD_SIMPLE);
 
     //
@@ -298,7 +304,7 @@ public class Forge : CustomNetworkObject
     if (_particlesSmoke.isPlaying)
     {
       _particlesSmoke.Stop();
-      _audioForge?.Stop();
+      StopAudioSource(_audioForge);
       _audioForge = null;
     }
   }

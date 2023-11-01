@@ -146,6 +146,13 @@ public static class SfxManager
     s_audioPriorityCounts[audioData._audioPriority]--;
   }
 
+  public static void StopAudioSource(AudioSource a)
+  {
+    if (a == null) return;
+
+    a.Stop();
+  }
+
   public static AudioSource PlayAudioSourceSimple(Vector3 position, AudioClip clip, AudioPriority audioPriority, float volume, float pitch, bool priority = false)
   {
     var audioSource = GetAudioSource(position, clip, audioPriority, priority, volume, pitch);
