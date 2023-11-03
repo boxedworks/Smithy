@@ -31,6 +31,81 @@ public class GameController : MonoBehaviour
     //
     CustomNetworkObject.SpawnNetworkObject(CustomNetworkObject.ObjectType.OBJECT_ORE_IRON, new Vector3(0f, 20f, 0f));
     CustomNetworkObject.SpawnNetworkObject(CustomNetworkObject.ObjectType.OBJECT_ORE_IRON, new Vector3(2f, 20f, 0f));
+
+    //
+    var c = GameObject.Find("Mine").GetComponentsInChildren<MeshFilter>();
+    for (var i = 0; i < c.Length; i++)
+    {
+      var child = c[i];
+      var meshFilter = child.GetComponent<MeshFilter>();
+      var bounds = meshFilter.mesh.bounds;
+      bounds.Expand(150f);
+      meshFilter.mesh.bounds = bounds;
+    }
+    c = GameObject.Find("Forest").GetComponentsInChildren<MeshFilter>();
+    for (var i = 0; i < c.Length; i++)
+    {
+      var child = c[i];
+      var meshFilter = child.GetComponent<MeshFilter>();
+      var bounds = meshFilter.mesh.bounds;
+      bounds.Expand(150f);
+      meshFilter.mesh.bounds = bounds;
+    }
+  }
+
+  //
+  public static int _PlayerDimension;
+  public static void SetDimensionOffset(int dimension, Vector3 offset)
+  {
+    if (dimension == 0)
+    {
+      for (var i = 0; i < 2; i++)
+      {
+        var dimensionMap = GameObject.Find("Forest").transform.GetChild(0);
+        var child = dimensionMap.GetChild(i);
+        var meshRenderer = child.GetComponent<MeshRenderer>();
+        meshRenderer.sharedMaterial.SetVector("_InclusionOffset", offset);
+      }
+      var dimensionNetworkObjects = GameObject.Find("Forest").transform.GetChild(1).GetComponentsInChildren<CustomNetworkObject>();
+      for (var i = 0; i < dimensionNetworkObjects.Length; i++)
+      {
+        var child = dimensionNetworkObjects[i];
+        child.SetDimensionOffset(dimension, offset);
+      }
+      var dimensionObjects = GameObject.Find("Forest").transform.GetChild(2).GetComponentsInChildren<MeshRenderer>();
+      for (var i = 0; i < dimensionObjects.Length; i++)
+      {
+        var child = dimensionObjects[i];
+        child.sharedMaterial.SetVector("_InclusionOffset", offset);
+      }
+
+      var dimensionCollider = GameObject.Find("RoomCollider0");
+      var dimensionPosition = PlayerController.s_DimensionPos0;
+      dimensionCollider.transform.position = new Vector3(dimensionPosition.x, 0f, dimensionPosition.y) - offset;
+    }
+    else
+    {
+      var dimensionMap = GameObject.Find("Mine").transform.GetChild(0);
+      for (var i = 0; i < 1; i++)
+      {
+        var child = dimensionMap.GetChild(i);
+        var meshRenderer = child.GetComponent<MeshRenderer>();
+        meshRenderer.sharedMaterial.SetVector("_InclusionOffset", offset);
+      }
+      var dimensionObjects = GameObject.Find("Mine").transform.GetChild(1).GetComponentsInChildren<CustomNetworkObject>();
+      for (var i = 0; i < dimensionObjects.Length; i++)
+      {
+        var child = dimensionObjects[i];
+        child.SetDimensionOffset(dimension, offset);
+      }
+
+      var dimensionCollider = GameObject.Find("RoomCollider1");
+      var dimensionPosition = PlayerController.s_DimensionPos1;
+      dimensionCollider.transform.position = new Vector3(dimensionPosition.x, 0f, dimensionPosition.y) - offset;
+    }
+
+    if (_PlayerDimension == dimension)
+      PlayerController._LocalPlayer.SetShaderOffset(offset);
   }
 
   // Update is called once per frame
@@ -200,7 +275,7 @@ public class GameController : MonoBehaviour
 
           UiSlider = GameObject.Instantiate(s_singleton._orderBase, s_singleton._orderBase.transform.parent).transform.GetChild(1).GetComponent<UnityEngine.UI.Slider>()
         });
-        s_singleton._orders[^1].UiSlider.transform.parent.gameObject.SetActive(true);
+      s_singleton._orders[^1].UiSlider.transform.parent.gameObject.SetActive(true);
     }
 
 

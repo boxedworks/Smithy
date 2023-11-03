@@ -167,6 +167,11 @@ public class CustomNetworkObject : NetworkBehaviour
   }
 
   //
+  public virtual void SetDimensionOffset(int dimension, Vector3 offset){
+
+  }
+
+  //
   public void IgnoreCollisionsWith(CustomNetworkObject other, bool ignore = true)
   {
     Physics.IgnoreCollision(_Collider, other._Collider, ignore);

@@ -75,6 +75,7 @@ public class PlayerController : CustomNetworkObject, ICanHold
   }
 
   // Gather / Handle input
+  Vector3 _inclusionOffset0, _inclusionOffset1;
   void Update()
   {
 
@@ -97,7 +98,21 @@ public class PlayerController : CustomNetworkObject, ICanHold
           inputMovement = Vector2.zero;
 
         // Direction
-        //var input2 = gamepad.rightStick.ReadValue();
+        var input2 = gamepad.rightStick.ReadValue();
+        if (input2.magnitude > 0.4f)
+        {
+
+          _inclusionOffset0 += new Vector3(input2.x, 0f, input2.y) * Time.deltaTime * 5f;
+          _inclusionOffset0.x = Mathf.Clamp(_inclusionOffset0.x, -9f, 0f);
+          _inclusionOffset0.z = Mathf.Clamp(_inclusionOffset0.z, -0f, 0f);
+          GameController.SetDimensionOffset(0, _inclusionOffset0);
+
+          _inclusionOffset1 += new Vector3(input2.x, 0f, input2.y) * Time.deltaTime * 5f;
+          _inclusionOffset1.x = Mathf.Clamp(_inclusionOffset1.x, -7f, 0f);
+          _inclusionOffset1.z = Mathf.Clamp(_inclusionOffset1.z, -0f, 0f);
+          GameController.SetDimensionOffset(1, _inclusionOffset1);
+
+        }
 
         // Interact
         inputInteract = gamepad.buttonSouth.wasPressedThisFrame;
@@ -168,6 +183,7 @@ public class PlayerController : CustomNetworkObject, ICanHold
           PitchHigher = 1.13f
         });
     }
+
   }
   float _animDistance, _footstepDistance;
 
@@ -189,6 +205,91 @@ public class PlayerController : CustomNetworkObject, ICanHold
     if (_holdData._IsHolding)
       _holdData._Holdee._Rb.MovePosition(_Rb.position + new Vector3(0f, 2.5f, 0f));
 
+    // Check dimension
+    if (!_inDemension)
+    {
+      if (transform.position.z > 5.5f)
+      {
+        _inDemension = true;
+
+        var dimension = transform.position.x > 0f ? 1 : 0;
+        SetShaderDimension(dimension);
+
+        Debug.Log($"In demension {dimension}");
+      }
+    }
+    else
+    {
+
+      var teleporterPosition = GameObject.Find("Teleporter").transform.position;
+
+      if (transform.position.z < teleporterPosition.z)
+      {
+        _inDemension = false;
+        Debug.Log("Out demension!");
+
+        SetShaderDimension(-1);
+      }
+    }
+
+  }
+
+  bool _inDemension;
+  public static Vector2 s_DimensionPos0 = new Vector2(27f, -15f), s_DimensionPos1 = new Vector2(27f, 0f);
+  void SetShaderDimension(int dimension)
+  {
+
+    var meshRenderer = _playerModel.transform.GetChild(1).GetComponent<SkinnedMeshRenderer>();
+    switch (dimension)
+    {
+
+      case -1:
+
+        var playerDiffPos = transform.position.x - (GameController._PlayerDimension == 0 ? s_DimensionPos0.x + 13f : s_DimensionPos1.x);
+        var lastDimensionOffset = GameController._PlayerDimension == 0 ? _inclusionOffset0 : _inclusionOffset1;
+
+        transform.position = _playerModel.transform.position = new Vector3(playerDiffPos, 1.2f, 4.989f) + lastDimensionOffset;
+
+        for (var i = 0; i < meshRenderer.sharedMaterials.Length; i++)
+        {
+          meshRenderer.sharedMaterials[i].SetInt("_InDimensions", 0);
+        }
+
+        break;
+
+      case 0:
+      case 1:
+
+        var levelOffset = dimension == 0 ? s_DimensionPos0 : s_DimensionPos1;
+        var dimensionOffset = dimension == 0 ? _inclusionOffset0 : _inclusionOffset1;
+
+        transform.position = _playerModel.transform.position = new Vector3(levelOffset.x + (transform.position.x + (dimension == 0 ? 13f : 0f)), 1.2f, levelOffset.y + 5.5f - 0.01f) - dimensionOffset;
+        GameObject.Find("Teleporter").transform.position = new Vector3(levelOffset.x + 3f, 1.2f, levelOffset.y + 5.5f - 0.5f);
+
+        for (var i = 0; i < meshRenderer.sharedMaterials.Length; i++)
+        {
+          meshRenderer.sharedMaterials[i].SetInt("_InDimensions", 1);
+          meshRenderer.sharedMaterials[i].SetInt("_DimensionRight", dimension);
+          meshRenderer.sharedMaterials[i].SetVector("_Offset", new Vector3(levelOffset.x, 0f, levelOffset.y));
+          meshRenderer.sharedMaterials[i].SetVector("_InclusionOffset", dimensionOffset);
+        }
+
+        break;
+
+    }
+
+    //
+    GameController._PlayerDimension = dimension;
+
+  }
+
+  public void SetShaderOffset(Vector3 offset)
+  {
+    var meshRenderer = _playerModel.transform.GetChild(1).GetComponent<SkinnedMeshRenderer>();
+    for (var i = 0; i < meshRenderer.sharedMaterials.Length; i++)
+    {
+      meshRenderer.sharedMaterials[i].SetVector("_InclusionOffset", offset);
+    }
   }
 
   // Set player input on server

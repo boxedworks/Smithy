@@ -327,5 +327,13 @@ public class Forge : CustomNetworkObject
   }
 
   //
+  public override void SetDimensionOffset(int dimension, Vector3 offset)
+  {
+    var materials = transform.GetChild(1).GetComponent<MeshRenderer>().sharedMaterials;
+    foreach (var material in materials)
+      material.SetVector("_InclusionOffset", offset);
+  }
+
+  //
 
 }
