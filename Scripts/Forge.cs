@@ -39,7 +39,9 @@ public class Forge : CustomNetworkObject
   // Start is called before the first frame update
   void Start()
   {
-    Init(ObjectType.BLOCK_FORGE, 1);
+    Init(ObjectType.BLOCK_FORGE, 1, 1);
+    _dimensionIndex = -1;
+    SetDimension(1);
 
     _slider = GameController.SliderManager.GetSlider();
     SetSliderPos();
@@ -85,10 +87,13 @@ public class Forge : CustomNetworkObject
   }
 
   //
-  void OnDestroy()
+  new void OnDestroy()
   {
     if (isClient)
       GameController.SliderManager.RemoveSlider(_slider);
+
+    //
+    base.OnDestroy();
   }
 
   //
@@ -327,11 +332,28 @@ public class Forge : CustomNetworkObject
   }
 
   //
+  public override void SetDimension(int dimension)
+  {
+    var materials = transform.GetChild(1).GetComponent<MeshRenderer>().sharedMaterials;
+    SetDimensionBase(dimension, ref materials, false);
+  }
   public override void SetDimensionOffset(int dimension, Vector3 offset)
   {
+    if (_dimensionIndex != dimension) return;
+
     var materials = transform.GetChild(1).GetComponent<MeshRenderer>().sharedMaterials;
     foreach (var material in materials)
       material.SetVector("_InclusionOffset", offset);
+  }
+
+  public override void ToggleDimension(bool toggle, bool left)
+  {
+    var materials = transform.GetChild(1).GetComponent<MeshRenderer>().sharedMaterials;
+    foreach (var material in materials)
+    {
+      material.SetInt("_InDimensions", toggle ? 1 : 0);
+      material.SetInt("_DimensionRight", left ? 0 : 1);
+    }
   }
 
   //

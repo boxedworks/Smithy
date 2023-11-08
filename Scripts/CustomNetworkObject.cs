@@ -8,11 +8,17 @@ using System.ComponentModel.Design;
 public class CustomNetworkObject : NetworkBehaviour
 {
 
+  static int s_id;
+  public int _Id;
+
   // Physics
   [System.NonSerialized]
   public Rigidbody _Rb;
   [System.NonSerialized]
   public Collider _Collider;
+
+  // Dimension info
+  protected int _dimensionIndex;
 
   // Sfx
   int _sfxProfileIndex;
@@ -49,15 +55,19 @@ public class CustomNetworkObject : NetworkBehaviour
 
   //
   public System.Action _OnInit;
-  protected void Init(ObjectType objectType, int sfxProfileIndex)
+  protected void Init(ObjectType objectType, int dimensionIndex, int sfxProfileIndex)
   {
 
     // Local
+    _Id = s_id++;
     _ObjectType = objectType;
 
     // Physics
     _Rb = GetComponent<Rigidbody>();
     _Collider = transform.GetChild(0).GetComponent<Collider>();
+
+    //
+    _dimensionIndex = dimensionIndex;
 
     // Sfx
     _sfxProfileIndex = sfxProfileIndex;
@@ -86,6 +96,13 @@ public class CustomNetworkObject : NetworkBehaviour
   void Update()
   {
 
+  }
+
+  public void OnDestroy()
+  {
+    //
+    if (_dimensionIndex > -1)
+      DimensionController.RemoveFromDimension(_dimensionIndex, this);
   }
 
   //
@@ -167,7 +184,90 @@ public class CustomNetworkObject : NetworkBehaviour
   }
 
   //
-  public virtual void SetDimensionOffset(int dimension, Vector3 offset){
+  public virtual void SetDimension(int dimension)
+  {
+
+  }
+  protected void SetDimensionBase(int dimensionId, ref Material[] materials, bool setPosition)
+  {
+    switch (dimensionId)
+    {
+
+      // Exit dimension
+      case -1:
+
+        // Set position back to origin
+        if (setPosition)
+        {
+
+          // Last dimension data
+          var dimensionDataLast = DimensionController.GetDimension(_dimensionIndex);
+          var dimensionOriginLast = dimensionDataLast.Origin;
+          var dimensionOffsetLast = dimensionDataLast.Offset;
+          var dimensionLeftLast = dimensionDataLast.DimensionLeft;
+
+          transform.position = new Vector3(
+            transform.position.x - (dimensionOriginLast.x + (dimensionLeftLast ? 13f : 0f)),
+            1.2f,
+            4.989f
+          ) + dimensionOffsetLast;
+        }
+
+        // Set material properties
+        for (var i = materials.Length - 1; i >= 0; i--)
+        {
+          var material = materials[i];
+          material.SetInt("_InDimensions", 0);
+        }
+
+        break;
+
+      // Enter left / right dimension
+      default:
+
+        // Dimension data
+        var dimensionData = DimensionController.GetDimension(dimensionId);
+        var dimensionOrigin = dimensionData.Origin;
+        var dimensionOffset = dimensionData.Offset;
+        var dimensionLeft = dimensionData.DimensionLeft;
+
+        // Set position to entrance of dimension
+        if (setPosition)
+        {
+          transform.position = new Vector3(
+            transform.position.x + (dimensionOrigin.x + (dimensionLeft ? 13f : 0f)),
+            1.2f,
+            dimensionOrigin.z + 5.49f
+          ) - dimensionOffset;
+        }
+
+        // Set material properties
+        for (var i = materials.Length - 1; i >= 0; i--)
+        {
+          var material = materials[i];
+          material.SetInt("_InDimensions", 1);
+          material.SetInt("_DimensionRight", dimensionId);
+          material.SetVector("_Offset", new Vector3(dimensionOrigin.x, dimensionOrigin.y, dimensionOrigin.z));
+          material.SetVector("_InclusionOffset", dimensionOffset);
+        }
+
+        break;
+    }
+
+    //
+    if (_dimensionIndex == -1)
+      DimensionController.AddToDimension(dimensionId, this);
+    else
+      DimensionController.RemoveFromDimension(_dimensionIndex, this);
+    _dimensionIndex = dimensionId;
+  }
+  public virtual void SetDimensionOffset(int dimension, Vector3 offset)
+  {
+
+  }
+
+  public virtual void ToggleDimension(bool toggle, bool left)
+  {
 
   }
 
@@ -175,6 +275,12 @@ public class CustomNetworkObject : NetworkBehaviour
   public void IgnoreCollisionsWith(CustomNetworkObject other, bool ignore = true)
   {
     Physics.IgnoreCollision(_Collider, other._Collider, ignore);
+  }
+
+  //
+  public static Vector3 GetDimensionOffset(Vector3 position, int dimension, Vector2 dimensionOffset)
+  {
+    return position - new Vector3(dimensionOffset.x + (dimension == 0 ? 13f : 0f), 0f, dimensionOffset.y);
   }
 
   //
