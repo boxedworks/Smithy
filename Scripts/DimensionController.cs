@@ -1,8 +1,11 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Animations;
 
-public class DimensionController
+using System.Linq;
+
+public static class DimensionController
 {
 
   //
@@ -10,12 +13,16 @@ public class DimensionController
   {
 
     public int Id;
+    public bool Visible { get { return s_dimensionLeftId == Id || s_dimensionRightId == Id; } }
 
-    public Vector3 Origin, Offset;
+    public Vector3
+      Origin,
+      Offset, OffsetDesired;
     public Vector2 BoundsX;
 
     public bool DimensionLeft;
 
+    public Transform Transform;
     public Material[] MapMaterials;
     public Dictionary<int, CustomNetworkObject> NetworkObjects;
 
@@ -27,7 +34,7 @@ public class DimensionController
 
   // Available dimensions
   static Dictionary<int, Dimension> s_dimensions;
-  static Dimension s_dimensionForest, s_dimensionMine;
+  static Dimension s_dimensionForest, s_dimensionMine, s_dimensionStoreroom;
 
   //
   public static void Init()
@@ -43,6 +50,7 @@ public class DimensionController
       Origin = new Vector3(27f, 0f, -15f),
       Offset = Vector3.zero,
 
+      Transform = dimensionMap,
       MapMaterials = new Material[] {
         dimensionMap.GetChild(0).GetChild(0).GetComponent<MeshRenderer>().sharedMaterials[0],
         dimensionMap.GetChild(2).GetChild(0).GetComponent<MeshRenderer>().sharedMaterials[0]
@@ -52,6 +60,8 @@ public class DimensionController
       BoundsX = new Vector2(-9f, 0f)
     };
     s_dimensions.Add(s_dimensionForest.Id, s_dimensionForest);
+    s_dimensionForest.SetOffset(s_dimensionForest.Offset);
+    s_dimensionForest.Hide();
 
     //
     dimensionMap = GameObject.Find("Mine").transform;
@@ -62,6 +72,7 @@ public class DimensionController
       Origin = new Vector3(27f, 0f, 0f),
       Offset = Vector3.zero,
 
+      Transform = dimensionMap,
       MapMaterials = new Material[] {
         dimensionMap.GetChild(0).GetChild(0).GetComponent<MeshRenderer>().sharedMaterials[0],
         dimensionMap.GetChild(0).GetChild(1).GetComponent<MeshRenderer>().sharedMaterials[0],
@@ -71,6 +82,55 @@ public class DimensionController
       BoundsX = new Vector2(-7f, 0f)
     };
     s_dimensions.Add(s_dimensionMine.Id, s_dimensionMine);
+    s_dimensionMine.SetOffset(s_dimensionMine.Offset);
+    s_dimensionMine.Hide();
+
+    //
+    dimensionMap = GameObject.Find("StoreRoom").transform;
+    s_dimensionStoreroom = new Dimension()
+    {
+      Id = s_dimensions.Count,
+
+      Origin = new Vector3(27f, 0f, -30f),
+      Offset = Vector3.zero,
+
+      Transform = dimensionMap,
+      MapMaterials = new Material[] {
+        dimensionMap.GetChild(0).GetChild(0).GetComponent<MeshRenderer>().sharedMaterials[0],
+      },
+      NetworkObjects = new(),
+
+      BoundsX = new Vector2(-9f, 0f)
+    };
+    s_dimensions.Add(s_dimensionStoreroom.Id, s_dimensionStoreroom);
+    s_dimensionStoreroom.SetOffset(s_dimensionStoreroom.Offset);
+    s_dimensionStoreroom.Hide();
+  }
+
+  //
+  public static void Update()
+  {
+
+    for (var i = 0; i < s_dimensions.Keys.Count; i++)
+    {
+
+      var dimension = s_dimensions[i];
+      if (dimension.Offset == dimension.OffsetDesired) continue;
+
+      var offsetDiff = dimension.OffsetDesired - dimension.Offset;
+      if (offsetDiff.magnitude < 0.02f)
+      {
+        dimension.Offset = dimension.OffsetDesired;
+      }
+      else
+      {
+        dimension.Offset += offsetDiff * Time.deltaTime * 5f;
+      }
+
+      s_dimensions[i] = dimension;
+      dimension.SetOffset(dimension.Offset);
+    }
+
   }
 
   //
@@ -88,37 +148,59 @@ public class DimensionController
   public static void IncrementDimensionOffset(int dimensionId, Vector3 offset)
   {
 
-    var dimensionData = s_dimensions[dimensionId];
-    var dimensionOffset = dimensionData.Offset;
-    var dimensionBounds = dimensionData.BoundsX;
+    var dimension = s_dimensions[dimensionId];
+    var dimensionOffset = dimension.OffsetDesired;
+    var dimensionBounds = dimension.BoundsX;
 
     dimensionOffset += new Vector3(offset.x, offset.y, offset.z);
     dimensionOffset.x = Mathf.Clamp(dimensionOffset.x, dimensionBounds.x, dimensionBounds.y);
     dimensionOffset.z = Mathf.Clamp(dimensionOffset.z, -0f, 0f);
 
-    SetDimensionOffset(dimensionId, dimensionOffset);
+    SetDimensionOffsetDesired(dimensionId, dimensionOffset);
   }
 
   //
+  public static void SetDimensionOffsetDesired(int dimensionId, Vector3 offset)
+  {
+
+    // Set offset
+    var dimension = s_dimensions[dimensionId];
+    dimension.OffsetDesired = offset;
+    s_dimensions[dimensionId] = dimension;
+  }
   public static void SetDimensionOffset(int dimensionId, Vector3 offset)
   {
 
     // Set offset
-    var dimensionData = s_dimensions[dimensionId];
-    dimensionData.Offset = offset;
-    s_dimensions[dimensionId] = dimensionData;
+    var dimension = s_dimensions[dimensionId];
+    dimension.Offset = offset;
+    s_dimensions[dimensionId] = dimension;
 
     // Set map / objects offset
-    var dimensionMap = dimensionData.MapMaterials;
+    var dimensionMap = dimension.MapMaterials;
     for (var i = 0; i < dimensionMap.Length; i++)
     {
       var material = dimensionMap[i];
       material.SetVector("_InclusionOffset", offset);
     }
 
-    var dimensionObects = dimensionData.NetworkObjects;
+    var dimensionObects = dimension.NetworkObjects;
     foreach (var networkObjectData in dimensionObects)
-      networkObjectData.Value.SetDimensionOffset(dimensionId, offset);
+      networkObjectData.Value.SetDimensionOffset(offset);
+
+    //
+    UpdateRoomCollider(dimensionId);
+  }
+  public static void SetOffset(this Dimension dimension, Vector3 offset)
+  {
+    SetDimensionOffset(dimension.Id, offset);
+  }
+
+  //
+  static void UpdateRoomCollider(int dimensionId)
+  {
+    var dimension = s_dimensions[dimensionId];
+    var offset = dimension.Offset;
 
     // Check left/right collider
     if (dimensionId == s_dimensionLeftId)
@@ -135,46 +217,66 @@ public class DimensionController
       dimensionCollider.position = new Vector3(dimensionOrigin.x, 0f, dimensionOrigin.z) - offset;
     }
   }
+  static void HideRoomCollider(int dimensionId)
+  {
+    // Check left/right collider
+    if (dimensionId == s_dimensionLeftId)
+    {
+      var dimensionCollider = GameObject.Find("RoomCollider0").transform;
+      dimensionCollider.position = new Vector3(200f, 0f, 0f);
+    }
+
+    else if (dimensionId == s_dimensionRightId)
+    {
+      var dimensionCollider = GameObject.Find("RoomCollider1").transform;
+      dimensionCollider.position = new Vector3(200f, 0f, 0f);
+    }
+  }
 
   //
   public static void AddToDimension(int dimensionId, CustomNetworkObject networkObject)
   {
-    var dimensionData = s_dimensions[dimensionId];
-    dimensionData.NetworkObjects.Add(networkObject._Id, networkObject);
-    s_dimensions[dimensionId] = dimensionData;
+    var dimension = s_dimensions[dimensionId];
+    dimension.NetworkObjects.Add(networkObject._Id, networkObject);
+    s_dimensions[dimensionId] = dimension;
+
+    // Check hiden
+    if (!dimension.Visible)
+      dimension.Hide();
   }
   public static void RemoveFromDimension(int dimensionId, CustomNetworkObject networkObject)
   {
-    var dimensionData = s_dimensions[dimensionId];
-    dimensionData.NetworkObjects.Remove(networkObject._Id);
-    s_dimensions[dimensionId] = dimensionData;
+    var dimension = s_dimensions[dimensionId];
+    dimension.NetworkObjects.Remove(networkObject._Id);
+    s_dimensions[dimensionId] = dimension;
   }
 
   //
-  public static void ToggleDimension(int dimensionId, bool toggle, bool left)
+  public static bool ToggleDimension(int dimensionId, bool toggle, bool left)
   {
 
     var currentDimension = left ? s_dimensionLeftId : s_dimensionRightId;
     var otherDimension = !left ? s_dimensionLeftId : s_dimensionRightId;
+    var dirText = left ? "left" : "right";
     if (toggle && currentDimension > -1)
     {
-      Debug.LogError($"Trying to occupy occupied dimension [{currentDimension}] with [{dimensionId}] {left}");
-      return;
+      Debug.LogError($"Trying to occupy occupied {dirText} dimension [{currentDimension}] with [{dimensionId}]");
+      return false;
     }
     if (!toggle && currentDimension < 0)
     {
-      Debug.LogError($"Trying to remove un-occupied dimension [{currentDimension}] with [{dimensionId}] {left}");
-      return;
+      Debug.LogError($"Trying to remove un-occupied {dirText} dimension [{currentDimension}] with [{dimensionId}]");
+      return false;
     }
     if (toggle && otherDimension == dimensionId)
     {
-      Debug.LogError($"Trying to duplicate add dimension [{currentDimension}] {left}");
-      return;
+      Debug.LogError($"Trying to duplicate {dirText} add dimension [{currentDimension}]");
+      return false;
     }
 
     //
-    var dimensionData = s_dimensions[dimensionId];
-    var dimensionMap = dimensionData.MapMaterials;
+    var dimension = s_dimensions[dimensionId];
+    var dimensionMap = dimension.MapMaterials;
     for (var i = 0; i < dimensionMap.Length; i++)
     {
       var material = dimensionMap[i];
@@ -182,14 +284,31 @@ public class DimensionController
       material.SetInt("_DimensionRight", left ? 0 : 1);
     }
 
-    var dimensionObects = dimensionData.NetworkObjects;
+    // Change map bounds
+    var meshFilters = dimension.Transform.GetChild(0).GetComponentsInChildren<MeshFilter>()
+      .Concat(dimension.Transform.GetChild(2).GetComponentsInChildren<MeshFilter>())
+      .ToArray();
+    for (var i = 0; i < meshFilters.Length; i++)
+    {
+      var meshFilter = meshFilters[i];
+      var bounds = meshFilter.mesh.bounds;
+      bounds.Expand(150f * (toggle ? 1f : -1f));
+      meshFilter.mesh.bounds = bounds;
+    }
+
+    // Objects
+    var dimensionObects = dimension.NetworkObjects;
     foreach (var networkObjectData in dimensionObects)
       networkObjectData.Value.ToggleDimension(toggle, left);
 
-    //
+    // Hide room collider
+    if (!toggle)
+      HideRoomCollider(dimensionId);
+
+    // Store new dimension data
     if (left)
     {
-      dimensionData.DimensionLeft = true;
+      dimension.DimensionLeft = true;
       if (toggle)
         s_dimensionLeftId = dimensionId;
       else
@@ -197,13 +316,156 @@ public class DimensionController
     }
     else
     {
-      dimensionData.DimensionLeft = false;
+      dimension.DimensionLeft = false;
       if (toggle)
         s_dimensionRightId = dimensionId;
       else
         s_dimensionRightId = -1;
     }
-    s_dimensions[dimensionId] = dimensionData;
+    s_dimensions[dimensionId] = dimension;
+
+    //
+    UpdateRoomCollider(dimensionId);
+
+    //
+    return true;
+  }
+  public static void ToggleDimension(int dimensionId, bool toggle)
+  {
+    var dimension = s_dimensions[dimensionId];
+    ToggleDimension(dimensionId, toggle, dimension.DimensionLeft);
+  }
+  public static void ToggleDimension(this Dimension dimension, bool toggle)
+  {
+    ToggleDimension(dimension.Id, toggle);
+  }
+
+  //
+  public static void HideDimension(int dimensionId)
+  {
+    //
+    var dimension = s_dimensions[dimensionId];
+    var dimensionMap = dimension.MapMaterials;
+    for (var i = 0; i < dimensionMap.Length; i++)
+    {
+      var material = dimensionMap[i];
+      material.SetInt("_InDimensions", 0);
+    }
+
+    var dimensionObects = dimension.NetworkObjects;
+    foreach (var networkObjectData in dimensionObects)
+      networkObjectData.Value.ToggleDimension(false, false);
+  }
+  public static void Hide(this Dimension dimension)
+  {
+    HideDimension(dimension.Id);
+  }
+
+  //
+  public static void SetDimensionMagic(int dimensionId, float magic)
+  {
+    //
+    var dimension = s_dimensions[dimensionId];
+    var dimensionMap = dimension.MapMaterials;
+    for (var i = 0; i < dimensionMap.Length; i++)
+    {
+      var material = dimensionMap[i];
+      material.SetFloat("_Magic", magic);
+    }
+
+    var dimensionObects = dimension.NetworkObjects;
+    foreach (var networkObjectData in dimensionObects)
+      networkObjectData.Value.SetDimensionMagic(magic);
+  }
+
+  public static void HideSmooth(int dimensionId)
+  {
+
+    IEnumerator HideSmoothCo()
+    {
+
+      var t = 1f;
+      while (t > 0f)
+      {
+
+        yield return new WaitForSeconds(0.01f);
+        t -= 0.016f;
+
+        SetDimensionMagic(dimensionId, EasingOut(t / 1f));
+      }
+
+      SetDimensionMagic(dimensionId, 0f);
+      ToggleDimension(dimensionId, false);
+    }
+
+    SetDimensionMagic(dimensionId, 1f);
+    GameController.s_Singleton.StartCoroutine(HideSmoothCo());
+
+    SfxManager.PlayAudioSourceSimple(
+      new Vector3(10f * (s_dimensions[dimensionId].DimensionLeft ? -1f : 1f), 0f, 0f),
+      GameController.s_Singleton._SfxProfiles[0]._audioClips[1],
+
+      0.6f,
+      0.9f, 1.1f,
+
+      SfxManager.AudioPriority.HIGH
+    );
+  }
+  public static void ShowSmooth(int dimensionId, bool left)
+  {
+
+    IEnumerator ShowSmoothCo()
+    {
+
+      var t = 1f;
+      while (t > 0f)
+      {
+
+        yield return new WaitForSeconds(0.01f);
+        t -= 0.012f;
+
+        SetDimensionMagic(dimensionId, EasingIn(1f - t / 1f));
+      }
+
+      SetDimensionMagic(dimensionId, 1f);
+    }
+
+    if (!ToggleDimension(dimensionId, true, left)) return;
+    SetDimensionMagic(dimensionId, 0f);
+    GameController.s_Singleton.StartCoroutine(ShowSmoothCo());
+
+    SfxManager.PlayAudioSourceSimple(
+      new Vector3(10f * (s_dimensions[dimensionId].DimensionLeft ? -1f : 1f), 0f, 0f),
+      GameController.s_Singleton._SfxProfiles[0]._audioClips[0],
+
+      0.6f,
+      0.9f, 1.1f,
+
+      SfxManager.AudioPriority.HIGH
+    );
+  }
+
+  static float EasingIn(float x)
+  {
+    var c4 = 2f * Mathf.PI / 3f;
+    return x == 0
+      ? 0
+      : x == 1
+      ? 1
+      : Mathf.Pow(2, -10 * x) * Mathf.Sin((x * 10f - 0.75f) * c4) + 1;
+  }
+
+  static float EasingOut(float x)
+  {
+    return Mathf.Sqrt(1 - Mathf.Pow(x - 1, 2));
+
+    /*var c4 = 2f * Mathf.PI / 3f;
+
+    return x == 0
+      ? 0
+      : x == 1
+      ? 1
+      : -Mathf.Pow(2, 10 * x - 10) * Mathf.Sin((x * 10f - 10.75f) * c4);*/
   }
 
 }

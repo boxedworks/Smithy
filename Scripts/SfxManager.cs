@@ -40,7 +40,7 @@ public static class SfxManager
 
       var audioSource = audioGameObject.AddComponent<AudioSource>();
       audioSource.playOnAwake = false;
-      audioSource.spatialBlend = 0.75f;
+      audioSource.spatialBlend = 0.85f;
 
       s_audioSourcesAvailable.Enqueue(audioSource);
     }

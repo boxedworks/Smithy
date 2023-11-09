@@ -39,7 +39,7 @@ public class Forge : CustomNetworkObject
   // Start is called before the first frame update
   void Start()
   {
-    Init(ObjectType.BLOCK_FORGE, 1, 1);
+    Init(ObjectType.BLOCK_FORGE, 1, 2);
     _dimensionIndex = -1;
     SetDimension(1);
 
@@ -336,11 +336,18 @@ public class Forge : CustomNetworkObject
   {
     var materials = transform.GetChild(1).GetComponent<MeshRenderer>().sharedMaterials;
     SetDimensionBase(dimension, ref materials, false);
-  }
-  public override void SetDimensionOffset(int dimension, Vector3 offset)
-  {
-    if (_dimensionIndex != dimension) return;
 
+    // Visibility
+    var meshFilter = transform.GetChild(1).GetComponent<MeshFilter>();
+    var bounds = meshFilter.mesh.bounds;
+    if (dimension > -1)
+      bounds.Expand(150f);
+    else
+      bounds.Expand(-150f);
+    meshFilter.mesh.bounds = bounds;
+  }
+  public override void SetDimensionOffset(Vector3 offset)
+  {
     var materials = transform.GetChild(1).GetComponent<MeshRenderer>().sharedMaterials;
     foreach (var material in materials)
       material.SetVector("_InclusionOffset", offset);
@@ -355,7 +362,13 @@ public class Forge : CustomNetworkObject
       material.SetInt("_DimensionRight", left ? 0 : 1);
     }
   }
-
-  //
+  public override void SetDimensionMagic(float magic)
+  {
+    var materials = transform.GetChild(1).GetComponent<MeshRenderer>().sharedMaterials;
+    foreach (var material in materials)
+    {
+      material.SetFloat("_Magic", magic);
+    }
+  }
 
 }

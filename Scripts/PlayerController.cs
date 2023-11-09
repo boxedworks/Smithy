@@ -28,7 +28,7 @@ public class PlayerController : CustomNetworkObject, ICanHold
   {
 
     //
-    Init(ObjectType.ENTITY_PLAYER, -1, 0);
+    Init(ObjectType.ENTITY_PLAYER, -1, 1);
 
     //
     _playerModel = transform.GetChild(1).GetComponent<Animator>();
@@ -94,16 +94,27 @@ public class PlayerController : CustomNetworkObject, ICanHold
       if (Input.GetKeyDown(KeyCode.Alpha1))
       {
         if (Input.GetKey(KeyCode.LeftShift))
-          DimensionController.ToggleDimension(0, false, true);
+        {
+          if (DimensionController.s_dimensionLeftId > -1)
+            DimensionController.HideSmooth(DimensionController.s_dimensionLeftId);
+        }
         else
-          DimensionController.ToggleDimension(0, true, !Input.GetKey(KeyCode.RightShift));
+          DimensionController.ShowSmooth(0, !Input.GetKey(KeyCode.RightShift));
       }
       if (Input.GetKeyDown(KeyCode.Alpha2))
       {
         if (Input.GetKey(KeyCode.LeftShift))
-          DimensionController.ToggleDimension(1, false, false);
+        {
+          if (DimensionController.s_dimensionRightId > -1)
+            DimensionController.HideSmooth(DimensionController.s_dimensionRightId);
+        }
         else
-          DimensionController.ToggleDimension(1, true, !Input.GetKey(KeyCode.RightShift));
+          DimensionController.ShowSmooth(1, !Input.GetKey(KeyCode.RightShift));
+      }
+      if (Input.GetKeyDown(KeyCode.Alpha3))
+      {
+        if (!Input.GetKey(KeyCode.LeftShift))
+          DimensionController.ShowSmooth(2, !Input.GetKey(KeyCode.RightShift));
       }
 
       // Controller input
@@ -227,13 +238,16 @@ public class PlayerController : CustomNetworkObject, ICanHold
     {
       if (transform.position.z > 5.5f)
       {
-        _inDemension = true;
-
         var dimensionLeft = transform.position.x < 0f;
         var dimensionId = dimensionLeft ? DimensionController.s_dimensionLeftId : DimensionController.s_dimensionRightId;
         if (dimensionId > -1)
+        {
+          _inDemension = true;
+
           SetDimension(dimensionId);
+        }
       }
+
     }
     else
     {
@@ -287,10 +301,12 @@ public class PlayerController : CustomNetworkObject, ICanHold
       default:
 
         // Dimension data
-        var dimensionData = DimensionController.GetDimension(dimensionId);
-        var dimensionOrigin = dimensionData.Origin;
-        var dimensionOffset = dimensionData.Offset;
-        var dimensionLeft = dimensionData.DimensionLeft;
+        var dimension = DimensionController.GetDimension(dimensionId);
+        var dimensionOrigin = dimension.Origin;
+        var dimensionOffset = dimension.Offset;
+        var dimensionLeft = dimension.DimensionLeft;
+
+        Debug.Log($"Set dim: {dimensionId} [{dimensionLeft}]");
 
         //
         vfx1.SetBool("InDimensions", true);
@@ -314,10 +330,24 @@ public class PlayerController : CustomNetworkObject, ICanHold
   }
 
   //
-  public override void SetDimensionOffset(int dimension, Vector3 offset)
+  public override void ToggleDimension(bool toggle, bool left)
   {
-    if (_dimensionIndex != dimension) return;
+    var meshRenderer = _playerModel.transform.GetChild(1).GetComponent<SkinnedMeshRenderer>();
+    var materials = meshRenderer.sharedMaterials;
+    var vfx1 = _playerModel.transform.GetChild(3).GetComponent<VisualEffect>();
 
+    foreach (var material in materials)
+    {
+      material.SetInt("_InDimensions", toggle ? 1 : 0);
+      material.SetInt("_DimensionRight", left ? 0 : 1);
+    }
+    vfx1.SetBool("InDimensions", toggle);
+    vfx1.SetBool("DimensionRight", !left);
+  }
+
+  //
+  public override void SetDimensionOffset(Vector3 offset)
+  {
     var meshRenderer = _playerModel.transform.GetChild(1).GetComponent<SkinnedMeshRenderer>();
     var vfx1 = _playerModel.transform.GetChild(3).GetComponent<VisualEffect>();
     for (var i = 0; i < meshRenderer.sharedMaterials.Length; i++)
@@ -325,7 +355,16 @@ public class PlayerController : CustomNetworkObject, ICanHold
       meshRenderer.sharedMaterials[i].SetVector("_InclusionOffset", offset);
     }
     vfx1.SetVector3("InclusionOffset", offset);
-
+  }
+  public override void SetDimensionMagic(float magic)
+  {
+    var meshRenderer = _playerModel.transform.GetChild(1).GetComponent<SkinnedMeshRenderer>();
+    var vfx1 = _playerModel.transform.GetChild(3).GetComponent<VisualEffect>();
+    for (var i = 0; i < meshRenderer.sharedMaterials.Length; i++)
+    {
+      meshRenderer.sharedMaterials[i].SetFloat("_Magic", magic);
+    }
+    vfx1.SetFloat("Magic", magic);
   }
 
   // Set player input on server

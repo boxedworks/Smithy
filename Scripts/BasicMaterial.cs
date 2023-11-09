@@ -9,9 +9,14 @@ public class BasicMaterial : CustomNetworkObject, IPickupable
 
   //
   bool _spawned;
-  MeshRenderer _meshRenderer;
-  MeshFilter _meshFilter;
-  Material[] _materials;
+
+  struct CustomMaterials
+  {
+    public MeshRenderer MeshRenderer;
+    public MeshFilter MeshFilter;
+    public Material[] Materials;
+  }
+  CustomMaterials _customMaterials;
 
   //
   public override void OnStartClient()
@@ -31,11 +36,11 @@ public class BasicMaterial : CustomNetworkObject, IPickupable
     var newMesh = SpawnNetworkObjectModel(_ObjectType, transform);
     newMesh.transform.localPosition = Vector3.zero;
 
-    _meshRenderer = newMesh.GetComponent<MeshRenderer>();
-    _materials = new Material[] { new Material(_meshRenderer.sharedMaterials[0]) };
-    _meshRenderer.sharedMaterials = _materials;
+    _customMaterials.MeshRenderer = newMesh.GetComponent<MeshRenderer>();
+    _customMaterials.MeshFilter = newMesh.GetComponent<MeshFilter>();
 
-    _meshFilter = newMesh.GetComponent<MeshFilter>();
+    _customMaterials.Materials = new Material[] { new Material(_customMaterials.MeshRenderer.sharedMaterials[0]) };
+    _customMaterials.MeshRenderer.sharedMaterials = _customMaterials.Materials;
 
     // Init physics
     Init(_ObjectType, -1, -1);
@@ -44,11 +49,11 @@ public class BasicMaterial : CustomNetworkObject, IPickupable
   //
   new void OnDestroy()
   {
-    if (_materials != null)
+    if (_customMaterials.Materials != null)
     {
-      for (var i = _materials.Length - 1; i >= 0; i--)
-        GameObject.Destroy(_materials[i]);
-      _materials = null;
+      for (var i = _customMaterials.Materials.Length - 1; i >= 0; i--)
+        GameObject.Destroy(_customMaterials.Materials[i]);
+      _customMaterials.Materials = null;
     }
 
     //
@@ -58,26 +63,35 @@ public class BasicMaterial : CustomNetworkObject, IPickupable
   //
   public override void SetDimension(int dimension)
   {
-    SetDimensionBase(dimension, ref _materials, false);
+    SetDimensionBase(dimension, ref _customMaterials.Materials, false);
 
     // Visibility
-    var bounds = _meshFilter.mesh.bounds;
+    var bounds = _customMaterials.MeshFilter.mesh.bounds;
     if (dimension > -1)
-    {
       bounds.Expand(150f);
-    }
     else
-    {
       bounds.Expand(-150f);
-    }
-    _meshFilter.mesh.bounds = bounds;
+    _customMaterials.MeshFilter.mesh.bounds = bounds;
   }
-  public override void SetDimensionOffset(int dimension, Vector3 offset)
+  public override void SetDimensionOffset(Vector3 offset)
   {
-    if (_dimensionIndex != dimension) return;
-
-    foreach (var material in _materials)
+    foreach (var material in _customMaterials.Materials)
       material.SetVector("_InclusionOffset", offset);
+  }
+  public override void ToggleDimension(bool toggle, bool left)
+  {
+    foreach (var material in _customMaterials.Materials)
+    {
+      material.SetInt("_InDimensions", toggle ? 1 : 0);
+      material.SetInt("_DimensionRight", left ? 0 : 1);
+    }
+  }
+  public override void SetDimensionMagic(float magic)
+  {
+    foreach (var material in _customMaterials.Materials)
+    {
+      material.SetFloat("_Magic", magic);
+    }
   }
 
 }

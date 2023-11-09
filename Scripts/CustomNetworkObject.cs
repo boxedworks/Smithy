@@ -201,10 +201,10 @@ public class CustomNetworkObject : NetworkBehaviour
         {
 
           // Last dimension data
-          var dimensionDataLast = DimensionController.GetDimension(_dimensionIndex);
-          var dimensionOriginLast = dimensionDataLast.Origin;
-          var dimensionOffsetLast = dimensionDataLast.Offset;
-          var dimensionLeftLast = dimensionDataLast.DimensionLeft;
+          var dimensionLast = DimensionController.GetDimension(_dimensionIndex);
+          var dimensionOriginLast = dimensionLast.Origin;
+          var dimensionOffsetLast = dimensionLast.Offset;
+          var dimensionLeftLast = dimensionLast.DimensionLeft;
 
           transform.position = new Vector3(
             transform.position.x - (dimensionOriginLast.x + (dimensionLeftLast ? 13f : 0f)),
@@ -218,6 +218,7 @@ public class CustomNetworkObject : NetworkBehaviour
         {
           var material = materials[i];
           material.SetInt("_InDimensions", 0);
+          material.SetFloat("_Magic", 1f);
         }
 
         break;
@@ -226,10 +227,10 @@ public class CustomNetworkObject : NetworkBehaviour
       default:
 
         // Dimension data
-        var dimensionData = DimensionController.GetDimension(dimensionId);
-        var dimensionOrigin = dimensionData.Origin;
-        var dimensionOffset = dimensionData.Offset;
-        var dimensionLeft = dimensionData.DimensionLeft;
+        var dimension = DimensionController.GetDimension(dimensionId);
+        var dimensionOrigin = dimension.Origin;
+        var dimensionOffset = dimension.Offset;
+        var dimensionLeft = dimension.DimensionLeft;
 
         // Set position to entrance of dimension
         if (setPosition)
@@ -246,7 +247,7 @@ public class CustomNetworkObject : NetworkBehaviour
         {
           var material = materials[i];
           material.SetInt("_InDimensions", 1);
-          material.SetInt("_DimensionRight", dimensionId);
+          material.SetInt("_DimensionRight", dimensionLeft ? 0 : 1);
           material.SetVector("_Offset", new Vector3(dimensionOrigin.x, dimensionOrigin.y, dimensionOrigin.z));
           material.SetVector("_InclusionOffset", dimensionOffset);
         }
@@ -261,8 +262,11 @@ public class CustomNetworkObject : NetworkBehaviour
       DimensionController.RemoveFromDimension(_dimensionIndex, this);
     _dimensionIndex = dimensionId;
   }
-  public virtual void SetDimensionOffset(int dimension, Vector3 offset)
+  public virtual void SetDimensionOffset(Vector3 offset)
   {
+
+  }
+  public virtual void SetDimensionMagic(float magic){
 
   }
 

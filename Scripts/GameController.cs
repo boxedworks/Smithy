@@ -32,24 +32,6 @@ public class GameController : MonoBehaviour
     //
     CustomNetworkObject.SpawnNetworkObject(CustomNetworkObject.ObjectType.OBJECT_ORE_IRON, new Vector3(0f, 20f, 0f));
     CustomNetworkObject.SpawnNetworkObject(CustomNetworkObject.ObjectType.OBJECT_ORE_IRON, new Vector3(2f, 20f, 0f));
-
-    //
-    var c = GameObject.Find("Mine").GetComponentsInChildren<MeshFilter>();
-    for (var i = 0; i < c.Length; i++)
-    {
-      var meshFilter = c[i];
-      var bounds = meshFilter.mesh.bounds;
-      bounds.Expand(150f);
-      meshFilter.mesh.bounds = bounds;
-    }
-    c = GameObject.Find("Forest").GetComponentsInChildren<MeshFilter>();
-    for (var i = 0; i < c.Length; i++)
-    {
-      var meshFilter = c[i];
-      var bounds = meshFilter.mesh.bounds;
-      bounds.Expand(150f);
-      meshFilter.mesh.bounds = bounds;
-    }
   }
 
   // Update is called once per frame
@@ -58,6 +40,7 @@ public class GameController : MonoBehaviour
 
     SfxManager.Update();
     OrderManager.Update();
+    DimensionController.Update();
   }
 
   //
