@@ -4,6 +4,9 @@ using UnityEngine;
 using UnityEngine.Animations;
 
 using System.Linq;
+using UnityEngine.VFX;
+using Mirror;
+using UnityEngine.Networking.Types;
 
 public static class DimensionController
 {
@@ -23,7 +26,8 @@ public static class DimensionController
     public bool DimensionLeft;
 
     public Transform Transform;
-    public Material[] MapMaterials;
+    public Material[] Materials;
+    public VisualEffect[] Effects;
     public Dictionary<int, CustomNetworkObject> NetworkObjects;
 
     //
@@ -51,7 +55,7 @@ public static class DimensionController
       Offset = Vector3.zero,
 
       Transform = dimensionMap,
-      MapMaterials = new Material[] {
+      Materials = new Material[] {
         dimensionMap.GetChild(0).GetChild(0).GetComponent<MeshRenderer>().sharedMaterials[0],
         dimensionMap.GetChild(2).GetChild(0).GetComponent<MeshRenderer>().sharedMaterials[0]
       },
@@ -73,7 +77,7 @@ public static class DimensionController
       Offset = Vector3.zero,
 
       Transform = dimensionMap,
-      MapMaterials = new Material[] {
+      Materials = new Material[] {
         dimensionMap.GetChild(0).GetChild(0).GetComponent<MeshRenderer>().sharedMaterials[0],
         dimensionMap.GetChild(0).GetChild(1).GetComponent<MeshRenderer>().sharedMaterials[0],
       },
@@ -95,8 +99,11 @@ public static class DimensionController
       Offset = Vector3.zero,
 
       Transform = dimensionMap,
-      MapMaterials = new Material[] {
+      Materials = new Material[] {
         dimensionMap.GetChild(0).GetChild(0).GetComponent<MeshRenderer>().sharedMaterials[0],
+      },
+      Effects = new VisualEffect[] {
+        dimensionMap.GetChild(3).GetChild(0).GetComponent<VisualEffect>()
       },
       NetworkObjects = new(),
 
@@ -105,6 +112,17 @@ public static class DimensionController
     s_dimensions.Add(s_dimensionStoreroom.Id, s_dimensionStoreroom);
     s_dimensionStoreroom.SetOffset(s_dimensionStoreroom.Offset);
     s_dimensionStoreroom.Hide();
+  }
+
+  //
+  public static void Decompose()
+  {
+    foreach (var dimensionData in s_dimensions)
+    {
+      var dimension = dimensionData.Value;
+      if (dimension.Visible)
+        dimension.Hide();
+    }
   }
 
   //
@@ -156,10 +174,15 @@ public static class DimensionController
     dimensionOffset.x = Mathf.Clamp(dimensionOffset.x, dimensionBounds.x, dimensionBounds.y);
     dimensionOffset.z = Mathf.Clamp(dimensionOffset.z, -0f, 0f);
 
-    SetDimensionOffsetDesired(dimensionId, dimensionOffset);
+    CmdSetDimensionOffsetDesired(dimensionId, dimensionOffset);
   }
 
   //
+  [Command]
+  public static void CmdSetDimensionOffsetDesired(int dimensionId, Vector3 offset)
+  {
+    NetworkEventManager.s_Singleton.RpcSetDimensionOffsetDesired(dimensionId, offset);
+  }
   public static void SetDimensionOffsetDesired(int dimensionId, Vector3 offset)
   {
 
@@ -177,12 +200,11 @@ public static class DimensionController
     s_dimensions[dimensionId] = dimension;
 
     // Set map / objects offset
-    var dimensionMap = dimension.MapMaterials;
-    for (var i = 0; i < dimensionMap.Length; i++)
-    {
-      var material = dimensionMap[i];
+    foreach (var material in dimension.Materials)
       material.SetVector("_InclusionOffset", offset);
-    }
+    if (dimension.Effects != null)
+      foreach (var effect in dimension.Effects)
+        effect.SetVector3("InclusionOffset", offset);
 
     var dimensionObects = dimension.NetworkObjects;
     foreach (var networkObjectData in dimensionObects)
@@ -252,12 +274,12 @@ public static class DimensionController
   }
 
   //
-  public static bool ToggleDimension(int dimensionId, bool toggle, bool left)
+  static bool CanToggleDimension(int dimensionId, bool toggle, bool left)
   {
-
     var currentDimension = left ? s_dimensionLeftId : s_dimensionRightId;
     var otherDimension = !left ? s_dimensionLeftId : s_dimensionRightId;
     var dirText = left ? "left" : "right";
+
     if (toggle && currentDimension > -1)
     {
       Debug.LogError($"Trying to occupy occupied {dirText} dimension [{currentDimension}] with [{dimensionId}]");
@@ -273,16 +295,24 @@ public static class DimensionController
       Debug.LogError($"Trying to duplicate {dirText} add dimension [{currentDimension}]");
       return false;
     }
+    return true;
+  }
+  public static void ToggleDimension(int dimensionId, bool toggle, bool left)
+  {
 
     //
     var dimension = s_dimensions[dimensionId];
-    var dimensionMap = dimension.MapMaterials;
-    for (var i = 0; i < dimensionMap.Length; i++)
+    foreach (var material in dimension.Materials)
     {
-      var material = dimensionMap[i];
       material.SetInt("_InDimensions", toggle ? 1 : 0);
       material.SetInt("_DimensionRight", left ? 0 : 1);
     }
+    if (dimension.Effects != null)
+      foreach (var effect in dimension.Effects)
+      {
+        effect.SetBool("InDimensions", toggle);
+        effect.SetBool("DimensionRight", !left);
+      }
 
     // Change map bounds
     var meshFilters = dimension.Transform.GetChild(0).GetComponentsInChildren<MeshFilter>()
@@ -292,7 +322,7 @@ public static class DimensionController
     {
       var meshFilter = meshFilters[i];
       var bounds = meshFilter.mesh.bounds;
-      bounds.Expand(150f * (toggle ? 1f : -1f));
+      bounds.Expand(200f * (toggle ? 1f : -1f));
       meshFilter.mesh.bounds = bounds;
     }
 
@@ -326,9 +356,6 @@ public static class DimensionController
 
     //
     UpdateRoomCollider(dimensionId);
-
-    //
-    return true;
   }
   public static void ToggleDimension(int dimensionId, bool toggle)
   {
@@ -345,15 +372,13 @@ public static class DimensionController
   {
     //
     var dimension = s_dimensions[dimensionId];
-    var dimensionMap = dimension.MapMaterials;
-    for (var i = 0; i < dimensionMap.Length; i++)
-    {
-      var material = dimensionMap[i];
+    foreach (var material in dimension.Materials)
       material.SetInt("_InDimensions", 0);
-    }
+    if (dimension.Effects != null)
+      foreach (var effect in dimension.Effects)
+        effect.SetBool("InDimensions", false);
 
-    var dimensionObects = dimension.NetworkObjects;
-    foreach (var networkObjectData in dimensionObects)
+    foreach (var networkObjectData in dimension.NetworkObjects)
       networkObjectData.Value.ToggleDimension(false, false);
   }
   public static void Hide(this Dimension dimension)
@@ -366,18 +391,23 @@ public static class DimensionController
   {
     //
     var dimension = s_dimensions[dimensionId];
-    var dimensionMap = dimension.MapMaterials;
-    for (var i = 0; i < dimensionMap.Length; i++)
-    {
-      var material = dimensionMap[i];
+    foreach (var material in dimension.Materials)
       material.SetFloat("_Magic", magic);
-    }
+    if (dimension.Effects != null)
+      foreach (var effect in dimension.Effects)
+        effect.SetFloat("Magic", magic);
 
     var dimensionObects = dimension.NetworkObjects;
     foreach (var networkObjectData in dimensionObects)
       networkObjectData.Value.SetDimensionMagic(magic);
   }
 
+  [Command]
+  public static void CmdHideSmooth(int dimensionId)
+  {
+    if (!CanToggleDimension(dimensionId, false, s_dimensions[dimensionId].DimensionLeft)) return;
+    NetworkEventManager.s_Singleton.RpcHideDimension(dimensionId);
+  }
   public static void HideSmooth(int dimensionId)
   {
 
@@ -411,6 +441,12 @@ public static class DimensionController
       SfxManager.AudioPriority.HIGH
     );
   }
+  [Command]
+  public static void CmdShowSmooth(int dimensionId, bool left)
+  {
+    if (!CanToggleDimension(dimensionId, true, left)) return;
+    NetworkEventManager.s_Singleton.RpcShowDimension(dimensionId, left);
+  }
   public static void ShowSmooth(int dimensionId, bool left)
   {
 
@@ -430,10 +466,9 @@ public static class DimensionController
       SetDimensionMagic(dimensionId, 1f);
     }
 
-    if (!ToggleDimension(dimensionId, true, left)) return;
+    ToggleDimension(dimensionId, true, left);
     SetDimensionMagic(dimensionId, 0f);
     GameController.s_Singleton.StartCoroutine(ShowSmoothCo());
-
     SfxManager.PlayAudioSourceSimple(
       new Vector3(10f * (s_dimensions[dimensionId].DimensionLeft ? -1f : 1f), 0f, 0f),
       GameController.s_Singleton._SfxProfiles[0]._audioClips[0],

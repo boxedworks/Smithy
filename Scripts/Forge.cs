@@ -39,14 +39,24 @@ public class Forge : CustomNetworkObject
   // Start is called before the first frame update
   void Start()
   {
-    Init(ObjectType.BLOCK_FORGE, 1, 2);
-    _dimensionIndex = -1;
-    SetDimension(1);
 
+    Init(ObjectType.BLOCK_FORGE, 1, 2);
+
+    // Fx
+    _dimensionMaterials = transform.GetChild(1).GetComponent<MeshRenderer>().sharedMaterials;
+    _particlesSmoke = transform.GetChild(2).GetComponent<ParticleSystem>();
+
+    // Dimension
+    _dimensionId = -1;
+    SetDimension(new SetDimensionData()
+    {
+      DimensionId = 1,
+      SetPosition = false
+    });
+
+    // Slider
     _slider = GameController.SliderManager.GetSlider();
     SetSliderPos();
-
-    _particlesSmoke = transform.GetChild(2).GetComponent<ParticleSystem>();
 
     //
     _forgeData = new()
@@ -332,43 +342,19 @@ public class Forge : CustomNetworkObject
   }
 
   //
-  public override void SetDimension(int dimension)
+  public override void SetDimension(SetDimensionData setDimensionData)
   {
-    var materials = transform.GetChild(1).GetComponent<MeshRenderer>().sharedMaterials;
-    SetDimensionBase(dimension, ref materials, false);
+    var dimensionId = setDimensionData.DimensionId;
+    SetDimensionBase(setDimensionData);
 
     // Visibility
     var meshFilter = transform.GetChild(1).GetComponent<MeshFilter>();
     var bounds = meshFilter.mesh.bounds;
-    if (dimension > -1)
+    if (dimensionId > -1)
       bounds.Expand(150f);
     else
       bounds.Expand(-150f);
     meshFilter.mesh.bounds = bounds;
-  }
-  public override void SetDimensionOffset(Vector3 offset)
-  {
-    var materials = transform.GetChild(1).GetComponent<MeshRenderer>().sharedMaterials;
-    foreach (var material in materials)
-      material.SetVector("_InclusionOffset", offset);
-  }
-
-  public override void ToggleDimension(bool toggle, bool left)
-  {
-    var materials = transform.GetChild(1).GetComponent<MeshRenderer>().sharedMaterials;
-    foreach (var material in materials)
-    {
-      material.SetInt("_InDimensions", toggle ? 1 : 0);
-      material.SetInt("_DimensionRight", left ? 0 : 1);
-    }
-  }
-  public override void SetDimensionMagic(float magic)
-  {
-    var materials = transform.GetChild(1).GetComponent<MeshRenderer>().sharedMaterials;
-    foreach (var material in materials)
-    {
-      material.SetFloat("_Magic", magic);
-    }
   }
 
 }

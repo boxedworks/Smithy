@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 using Mirror;
+using Unity.VisualScripting;
 
 public class BasicMaterial : CustomNetworkObject, IPickupable
 {
@@ -14,7 +15,6 @@ public class BasicMaterial : CustomNetworkObject, IPickupable
   {
     public MeshRenderer MeshRenderer;
     public MeshFilter MeshFilter;
-    public Material[] Materials;
   }
   CustomMaterials _customMaterials;
 
@@ -25,6 +25,7 @@ public class BasicMaterial : CustomNetworkObject, IPickupable
   }
 
   //
+  Transform _newMesh;
   protected override void Spawn()
   {
 
@@ -33,27 +34,116 @@ public class BasicMaterial : CustomNetworkObject, IPickupable
     _spawned = true;
 
     // Load mesh
-    var newMesh = SpawnNetworkObjectModel(_ObjectType, transform);
-    newMesh.transform.localPosition = Vector3.zero;
+    var meshData = SpawnNetworkObjectModel(_ObjectType, transform);
+    _newMesh = meshData.GetChild(0);
 
-    _customMaterials.MeshRenderer = newMesh.GetComponent<MeshRenderer>();
-    _customMaterials.MeshFilter = newMesh.GetComponent<MeshFilter>();
+    var collider = meshData.GetChild(1);
+    collider.parent = transform;
+    collider.localPosition = Vector3.zero;
 
-    _customMaterials.Materials = new Material[] { new Material(_customMaterials.MeshRenderer.sharedMaterials[0]) };
-    _customMaterials.MeshRenderer.sharedMaterials = _customMaterials.Materials;
+    if (isServer)
+    {
+      _newMesh.parent = transform;
+      _newMesh.localPosition = Vector3.zero;
+    }
+    else
+    {
+      _newMesh.parent = transform.parent;
+    }
+    GameObject.Destroy(meshData.gameObject);
+
+    _customMaterials.MeshRenderer = _newMesh.GetComponent<MeshRenderer>();
+    _customMaterials.MeshFilter = _newMesh.GetComponent<MeshFilter>();
+
+    _dimensionMaterials = new Material[] { new Material(_customMaterials.MeshRenderer.sharedMaterials[0]) };
+    _customMaterials.MeshRenderer.sharedMaterials = _dimensionMaterials;
 
     // Init physics
     Init(_ObjectType, -1, -1);
   }
 
+  void Update()
+  {
+    //
+    if (isServer && !_PickupData._PickedUp)
+      CheckDimensionChanged();
+  }
+
+  Vector3 _lastPosition;
+  void LateUpdate()
+  {
+
+    if (!_spawned || isServer) return;
+
+    var distance = transform.position - _lastPosition;
+    if (distance.magnitude > 10f)
+    {
+
+      if (_queuedDimension != -2)
+      {
+        var dimensionId = _queuedDimension;
+        SetDimensionBase(new SetDimensionData()
+        {
+          DimensionId = dimensionId,
+          SetPosition = false
+        });
+
+        // Visibility
+        var bounds = _customMaterials.MeshFilter.mesh.bounds;
+        if (dimensionId > -1)
+          bounds.Expand(150f);
+        else
+          bounds.Expand(-150f);
+        _customMaterials.MeshFilter.mesh.bounds = bounds;
+
+        _newMesh.position = transform.position;
+        _newMesh.rotation = transform.rotation;
+
+        _lastPosition = transform.position;
+
+        _queuedDimension = -2;
+      }
+    }
+    else
+    {
+      _newMesh.position = transform.position;
+      _newMesh.rotation = transform.rotation;
+
+      _lastPosition = transform.position;
+    }
+  }
+
+  void FixedUpdate()
+  {
+
+    //
+    if (!isServer)
+      return;
+
+    // Check fall
+    if (transform.position.y < -10f)
+    {
+
+      if (_inDemension)
+        CmdSetDimension(new SetDimensionData()
+        {
+          DimensionId = -1,
+          SetPosition = false
+        });
+
+      transform.position = new Vector3(0f, 10f, 0f);
+      return;
+    }
+  }
+
   //
   new void OnDestroy()
   {
-    if (_customMaterials.Materials != null)
+    if (_dimensionMaterials != null)
     {
-      for (var i = _customMaterials.Materials.Length - 1; i >= 0; i--)
-        GameObject.Destroy(_customMaterials.Materials[i]);
-      _customMaterials.Materials = null;
+      for (var i = _dimensionMaterials.Length - 1; i >= 0; i--)
+        GameObject.Destroy(_dimensionMaterials[i]);
+      _dimensionMaterials = null;
     }
 
     //
@@ -61,37 +151,31 @@ public class BasicMaterial : CustomNetworkObject, IPickupable
   }
 
   //
-  public override void SetDimension(int dimension)
+  int _queuedDimension = -2;
+  public override void SetDimension(SetDimensionData setDimensionData)
   {
-    SetDimensionBase(dimension, ref _customMaterials.Materials, false);
+
+    if (!isServer)
+    {
+      _queuedDimension = setDimensionData.DimensionId;
+      return;
+    }
+
+    var dimensionId = setDimensionData.DimensionId;
+    SetDimensionBase(setDimensionData);
 
     // Visibility
     var bounds = _customMaterials.MeshFilter.mesh.bounds;
-    if (dimension > -1)
+    if (dimensionId > -1)
       bounds.Expand(150f);
     else
       bounds.Expand(-150f);
     _customMaterials.MeshFilter.mesh.bounds = bounds;
   }
-  public override void SetDimensionOffset(Vector3 offset)
-  {
-    foreach (var material in _customMaterials.Materials)
-      material.SetVector("_InclusionOffset", offset);
-  }
-  public override void ToggleDimension(bool toggle, bool left)
-  {
-    foreach (var material in _customMaterials.Materials)
-    {
-      material.SetInt("_InDimensions", toggle ? 1 : 0);
-      material.SetInt("_DimensionRight", left ? 0 : 1);
-    }
-  }
-  public override void SetDimensionMagic(float magic)
-  {
-    foreach (var material in _customMaterials.Materials)
-    {
-      material.SetFloat("_Magic", magic);
-    }
-  }
+
+
+  // Pickup info
+  public IPickupable _PickupData { get { return this; } }
+  bool IPickupable._PickedUp { get; set; }
 
 }

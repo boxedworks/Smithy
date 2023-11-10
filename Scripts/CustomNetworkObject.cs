@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 using Mirror;
-using System.ComponentModel.Design;
+using UnityEngine.VFX;
 
 public class CustomNetworkObject : NetworkBehaviour
 {
@@ -18,7 +18,11 @@ public class CustomNetworkObject : NetworkBehaviour
   public Collider _Collider;
 
   // Dimension info
-  protected int _dimensionIndex;
+  protected int _dimensionId;
+  protected bool _inDemension { get { return _dimensionId > -1; } }
+
+  protected Material[] _dimensionMaterials;
+  protected VisualEffect[] _effects, _dimensionEffects;
 
   // Sfx
   int _sfxProfileIndex;
@@ -67,7 +71,7 @@ public class CustomNetworkObject : NetworkBehaviour
     _Collider = transform.GetChild(0).GetComponent<Collider>();
 
     //
-    _dimensionIndex = dimensionIndex;
+    _dimensionId = dimensionIndex;
 
     // Sfx
     _sfxProfileIndex = sfxProfileIndex;
@@ -101,8 +105,8 @@ public class CustomNetworkObject : NetworkBehaviour
   public void OnDestroy()
   {
     //
-    if (_dimensionIndex > -1)
-      DimensionController.RemoveFromDimension(_dimensionIndex, this);
+    if (_dimensionId > -1)
+      DimensionController.RemoveFromDimension(_dimensionId, this);
   }
 
   //
@@ -184,12 +188,31 @@ public class CustomNetworkObject : NetworkBehaviour
   }
 
   //
-  public virtual void SetDimension(int dimension)
+  public struct SetDimensionData
+  {
+    public int DimensionId;
+    public bool SetPosition;
+  }
+  public virtual void SetDimension(SetDimensionData setDimensionData)
   {
 
   }
-  protected void SetDimensionBase(int dimensionId, ref Material[] materials, bool setPosition)
+
+  protected void SetDimensionBase(SetDimensionData setDimensionData)
   {
+    var dimensionId = setDimensionData.DimensionId;
+    var setPosition = setDimensionData.SetPosition && NetworkEventManager.s_Singleton.isServer;
+
+    if (_ObjectType == ObjectType.OBJECT_ORE_IRON)
+      Debug.Log($"[{Time.time}] Setting dim: {dimensionId} setpos: {setPosition}, current [{_dimensionId}]");
+
+    //
+    if (_dimensionId == setDimensionData.DimensionId)
+    {
+      Debug.LogError($"Set dimension base to same dimension {_dimensionId}");
+    }
+
+    //
     switch (dimensionId)
     {
 
@@ -201,24 +224,32 @@ public class CustomNetworkObject : NetworkBehaviour
         {
 
           // Last dimension data
-          var dimensionLast = DimensionController.GetDimension(_dimensionIndex);
+          var dimensionLast = DimensionController.GetDimension(_dimensionId);
           var dimensionOriginLast = dimensionLast.Origin;
           var dimensionOffsetLast = dimensionLast.Offset;
           var dimensionLeftLast = dimensionLast.DimensionLeft;
 
           transform.position = new Vector3(
             transform.position.x - (dimensionOriginLast.x + (dimensionLeftLast ? 13f : 0f)),
-            1.2f,
+            transform.position.y,
             4.989f
           ) + dimensionOffsetLast;
         }
 
         // Set material properties
-        for (var i = materials.Length - 1; i >= 0; i--)
+        foreach (var material in _dimensionMaterials)
         {
-          var material = materials[i];
           material.SetInt("_InDimensions", 0);
           material.SetFloat("_Magic", 1f);
+        }
+
+        // Effects
+        if (_effects != null)
+        {
+          foreach (var effect in _dimensionEffects)
+            effect.Stop();
+          foreach (var effect in _effects)
+            effect.Play();
         }
 
         break;
@@ -237,48 +268,130 @@ public class CustomNetworkObject : NetworkBehaviour
         {
           transform.position = new Vector3(
             transform.position.x + (dimensionOrigin.x + (dimensionLeft ? 13f : 0f)),
-            1.2f,
+            transform.position.y,
             dimensionOrigin.z + 5.49f
           ) - dimensionOffset;
         }
 
         // Set material properties
-        for (var i = materials.Length - 1; i >= 0; i--)
+        foreach (var material in _dimensionMaterials)
         {
-          var material = materials[i];
           material.SetInt("_InDimensions", 1);
           material.SetInt("_DimensionRight", dimensionLeft ? 0 : 1);
           material.SetVector("_Offset", new Vector3(dimensionOrigin.x, dimensionOrigin.y, dimensionOrigin.z));
           material.SetVector("_InclusionOffset", dimensionOffset);
         }
 
+        // Set effect properties
+        if (_effects != null)
+        {
+          foreach (var effect in _effects)
+            effect.Stop();
+          foreach (var effect in _dimensionEffects)
+          {
+            effect.SetBool("InDimensions", true);
+            effect.SetBool("DimensionRight", !dimensionLeft);
+            effect.SetVector3("Offset", new Vector3(dimensionOrigin.x, dimensionOrigin.y, dimensionOrigin.z));
+            effect.SetVector3("InclusionOffset", dimensionOffset);
+
+            effect.Play();
+          }
+        }
+
         break;
     }
 
     //
-    if (_dimensionIndex == -1)
+    if (_dimensionId == -1)
       DimensionController.AddToDimension(dimensionId, this);
     else
-      DimensionController.RemoveFromDimension(_dimensionIndex, this);
-    _dimensionIndex = dimensionId;
+      DimensionController.RemoveFromDimension(_dimensionId, this);
+    _dimensionId = dimensionId;
+    if (_ObjectType == ObjectType.OBJECT_ORE_IRON)
+      Debug.Log($"Set dimension: {dimensionId}");
   }
-  public virtual void SetDimensionOffset(Vector3 offset)
+  public void SetDimensionOffset(Vector3 offset)
   {
-
+    foreach (var material in _dimensionMaterials)
+      material.SetVector("_InclusionOffset", offset);
+    if (_effects != null)
+      foreach (var effect in _dimensionEffects)
+        effect.SetVector3("InclusionOffset", offset);
   }
-  public virtual void SetDimensionMagic(float magic){
-
-  }
-
-  public virtual void ToggleDimension(bool toggle, bool left)
+  public void SetDimensionMagic(float magic)
   {
+    foreach (var material in _dimensionMaterials)
+      material.SetFloat("_Magic", magic);
+    if (_effects != null)
+      foreach (var effect in _dimensionEffects)
+        effect.SetFloat("Magic", magic);
+  }
 
+  public void ToggleDimension(bool toggle, bool left)
+  {
+    foreach (var material in _dimensionMaterials)
+    {
+      material.SetInt("_InDimensions", toggle ? 1 : 0);
+      material.SetInt("_DimensionRight", left ? 0 : 1);
+    }
+    if (_effects != null)
+      foreach (var effect in _dimensionEffects)
+      {
+        effect.SetBool("InDimensions", toggle);
+        effect.SetBool("DimensionRight", !left);
+      }
   }
 
   //
   public void IgnoreCollisionsWith(CustomNetworkObject other, bool ignore = true)
   {
     Physics.IgnoreCollision(_Collider, other._Collider, ignore);
+  }
+
+  //
+  protected void CheckDimensionChanged()
+  {
+    // Check dimension
+    if (!_inDemension)
+    {
+      if (transform.position.z > 5.5f)
+      {
+        var dimensionLeft = transform.position.x < 0f;
+        var dimensionId = dimensionLeft ? DimensionController.s_dimensionLeftId : DimensionController.s_dimensionRightId;
+        if (dimensionId > -1)
+        {
+          CmdSetDimension(new SetDimensionData()
+          {
+            DimensionId = dimensionId,
+            SetPosition = true
+          });
+        }
+      }
+
+    }
+    else
+    {
+      var dimensionEntrance = DimensionController.GetDimension(_dimensionId).EntrancePosition;
+      if (transform.position.z < dimensionEntrance.z)
+      {
+        CmdSetDimension(new SetDimensionData()
+        {
+          DimensionId = -1,
+          SetPosition = true
+        });
+      }
+    }
+  }
+
+  [Command(requiresAuthority = false)]
+  public virtual void CmdSetDimension(SetDimensionData setDimensionData)
+  {
+    RpcSetDimension(setDimensionData);
+  }
+  [ClientRpc]
+  public virtual void RpcSetDimension(SetDimensionData setDimensionData)
+  {
+    SetDimension(setDimensionData);
   }
 
   //
@@ -300,7 +413,7 @@ public class CustomNetworkObject : NetworkBehaviour
   //
   public static Transform SpawnNetworkObjectModel(ObjectType objectType, Transform parent)
   {
-    return GameObject.Instantiate(Resources.Load<GameObject>($@"NetworkObjects/{objectType}"), parent).transform;
+    return GameObject.Instantiate(Resources.Load<GameObject>($@"NetworkObjects/{objectType}")).transform;
   }
 
   //

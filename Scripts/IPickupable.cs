@@ -13,6 +13,7 @@ public interface IPickupable
 
 
   }
+  public bool _PickedUp { get; set; }
 
 
 }

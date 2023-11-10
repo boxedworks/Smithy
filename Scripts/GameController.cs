@@ -34,6 +34,14 @@ public class GameController : MonoBehaviour
     CustomNetworkObject.SpawnNetworkObject(CustomNetworkObject.ObjectType.OBJECT_ORE_IRON, new Vector3(2f, 20f, 0f));
   }
 
+  //
+  void OnDestroy()
+  {
+#if UNITY_EDITOR
+    DimensionController.Decompose();
+#endif
+  }
+
   // Update is called once per frame
   void Update()
   {
